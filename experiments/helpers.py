@@ -110,7 +110,7 @@ def init_exp(name: str) -> Tuple[Result, ExpOptions]:
         if p != "rules":
             setattr(opts, p, vars(args)[p])
 
-    name.replace("#", f"_{opts.redundancy}")
+    name = name.replace("#", f"_{opts.redundancy}")
     base = pathlib.Path().resolve()
     path = base / "experiment_results" / pathlib.Path(name)
     res = Result(path)
