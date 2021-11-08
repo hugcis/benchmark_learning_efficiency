@@ -1,3 +1,4 @@
+from dataclasses import asdict
 import random
 import pickle as pkl
 import pathlib
@@ -60,10 +61,12 @@ class AtomicOpen:
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     base_options = ExpOptions()
-    for opt in vars(base_options):
+    opts_dict = asdict(base_options)
+    for opt in opts_dict:
         if opt == "rules" or opt == "seed":
             continue
-        parser.add_argument(f"--{opt}", default=vars(base_options)[opt])
+        parser.add_argument(f"--{opt}", default=vars(base_options)[opt],
+                            type=type(opts_dict[opt]))
 
     parser.add_argument("--rules", nargs="+", default=list(range(256)))
     parser.add_argument("--seed", type=int, default=84923)
