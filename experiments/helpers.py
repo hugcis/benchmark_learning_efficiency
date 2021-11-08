@@ -1,7 +1,10 @@
+import random
 import pickle as pkl
 import pathlib
 import argparse
 from typing import Dict, Tuple
+
+import numpy as np
 
 from reservoir_ca.experiment import ExpOptions
 
@@ -99,13 +102,18 @@ class Result:
 def init_exp(name: str) -> Tuple[Result, ExpOptions]:
     parser = make_parser()
     args = parser.parse_args()
-    base = pathlib.Path().resolve()
-    path = base / "experiment_results" / pathlib.Path(name)
-    res = Result(path)
-
     opts = ExpOptions(rules=[int(i) for i in args.rules])
     for p in vars(opts):
         if p != "rule":
             setattr(opts, p, vars(args)[p])
+
+    name.replace("#", f"_{opts.redundancy}")
+    base = pathlib.Path().resolve()
+    path = base / "experiment_results" / pathlib.Path(name)
+    res = Result(path)
+
+    seed = opts.seed
+    random.seed(seed)
+    np.random.seed(seed)
 
     return res, opts
