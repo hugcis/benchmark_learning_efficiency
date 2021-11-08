@@ -107,7 +107,7 @@ def init_exp(name: str) -> Tuple[Result, ExpOptions]:
     args = parser.parse_args()
     opts = ExpOptions(rules=[int(i) for i in args.rules])
     for p in vars(opts):
-        if p != "rule":
+        if p != "rules":
             setattr(opts, p, vars(args)[p])
 
     name.replace("#", f"_{opts.redundancy}")
