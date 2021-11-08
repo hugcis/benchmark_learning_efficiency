@@ -80,3 +80,5 @@ class Result:
         else:
             with AtomicOpen(self.path, "wb") as f:
                 pkl.dump(self.res, f)
+        # Flush results
+        self.res = {}

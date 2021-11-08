@@ -12,6 +12,9 @@ tqdm = "^4.62.3"
 sklearn = "^0.0"
 
 [tool.poetry.dev-dependencies]
+matplotlib = "^3.4.3"
+jupyter = "^1.0.0"
+jupyterlab = "^3.2.2"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

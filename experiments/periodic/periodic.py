@@ -17,7 +17,7 @@ if __name__ == "__main__":
         per = Periodic(5)
         ca = CAReservoir(0, 2)
         exp = Experiment(ca, per)
-        for t in tqdm(args.rules):
+        for t in tqdm([int(i) for i in args.rules]):
             ca = CAReservoir(t, 2)
             exp.ca = ca
             exp.fit()
