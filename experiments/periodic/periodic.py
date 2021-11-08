@@ -1,23 +1,18 @@
-import pathlib
-
 from tqdm import tqdm
 
 from reservoir_ca.tasks import Periodic
 from reservoir_ca.ca_res import CAReservoir
 from reservoir_ca.experiment import Experiment
-from experiments.helpers import parser, Result
+from experiments.helpers import init_exp
 
 if __name__ == "__main__":
-    args = parser.parse_args()
-    base = pathlib.Path().resolve()
-    path = base / "experiment_results" / pathlib.Path("periodic_exp.pkl")
-    res = Result(path)
+    res, args, opts = init_exp("periodic_exp.pkl")
 
-    for _ in range(10):
+    for _ in range(opts.n_rep):
         per = Periodic(5)
         ca = CAReservoir(0, 2)
-        exp = Experiment(ca, per)
-        for t in tqdm([int(i) for i in args.rules]):
+        exp = Experiment(ca, per, opts)
+        for t in tqdm(opts.rules):
             ca = CAReservoir(t, 2)
             exp.ca = ca
             exp.fit()

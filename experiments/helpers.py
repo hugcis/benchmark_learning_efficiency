@@ -1,7 +1,9 @@
 import pickle as pkl
 import pathlib
 import argparse
-from typing import Dict
+from typing import Dict, Tuple
+
+from reservoir_ca.experiment import ExpOptions
 
 try:
     # Posix based file locking (Linux, Ubuntu, MacOS, etc.)
@@ -54,6 +56,7 @@ class AtomicOpen:
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--rules", nargs="+", default=list(range(256)))
+parser.add_argument("--seed", type=int, default=84923)
 
 
 class Result:
@@ -82,3 +85,14 @@ class Result:
                 pkl.dump(self.res, f)
         # Flush results
         self.res = {}
+
+
+def init_exp(name: str) -> Tuple[Result, argparse.Namespace, ExpOptions]:
+    args = parser.parse_args()
+    base = pathlib.Path().resolve()
+    path = base / "experiment_results" / pathlib.Path(name)
+    res = Result(path)
+
+    opts = ExpOptions(rules=[int(i)_for i in args.rules])
+
+    return res, args, opts

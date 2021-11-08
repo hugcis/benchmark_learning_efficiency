@@ -10,6 +10,8 @@ from reservoir_ca.tasks import Task
 class ExpOptions:
     seq_len: int = 100
     max_n_seq: int = 300
+    n_rep: int = 10
+    rules: list[int] = list(range(256))
 
 class Experiment:
     def __init__(self, ca: CAReservoir, task: Task, exp_options: ExpOptions = ExpOptions()):
