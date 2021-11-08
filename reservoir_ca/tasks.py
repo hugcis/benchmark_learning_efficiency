@@ -15,6 +15,8 @@ class Task(ABC):
         pass
         del self, max_n_seq, kwargs
 
+    def output_dimension(self) -> int:
+        return len(self.dictionary)
 
 class HybridTask(Task):
     def __init__(self, named_tasks: Dict[str, Task]):
@@ -51,6 +53,7 @@ class BinaryTask(Task):
         else:
             self.lengths = lengths
 
+
 class TokenTask(Task):
     def __init__(self, lengths: Union[int, Sequence[int]],
                  dictionary: Sequence[str] = ["A", "B", "C"]):
@@ -68,6 +71,7 @@ class TokenTask(Task):
                 raise ValueError("Wrong lengths")
         else:
             self.lengths = lengths
+
 
 class Periodic(BinaryTask):
     """ Generate all binary periodic sequences with lengths. """
@@ -115,6 +119,7 @@ class IncreasingPeriod(BinaryTask):
                     st.add(task_str)
         return tasks[:max_n_seq]
 
+
 class BinaryNGrams(BinaryTask):
     """ Generate random sequences with N-Grams of length in lenghts. """
     def generate_tasks(self, seq_len: int = 100, max_n_seq: int = 10) -> List[List[str]]:
@@ -133,6 +138,7 @@ class BinaryNGrams(BinaryTask):
                     st.add(task_str)
         return tasks
 
+
 class SymbolCounting(TokenTask):
     def __init__(self, lengths: Union[int, Sequence[int]],
                  dictionary: List[str] = ["A", "B", "C"],
@@ -145,7 +151,8 @@ class SymbolCounting(TokenTask):
         self.query_symbol = query_symbol
         self.base_dic = dictionary
 
-    def generate_tasks(self, max_n_seq: int = 10):
+    def generate_tasks(self, max_n_seq: int = 10, **kwargs):
+        del kwargs
         tasks = []
         st = set()
         n_rand = max(max_n_seq // len(self.lengths), 1)

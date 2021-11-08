@@ -16,11 +16,16 @@ class ExpOptions:
     rules: list[int] = field(default_factory=lambda : list(range(256)))
 
 
+def to_dim_one_hot(data, out_dim):
+    return np.eye(out_dim)[data]
+
 class Experiment:
     def __init__(self, ca: CAReservoir, task: Task, exp_options: ExpOptions = ExpOptions()):
         self.ca = ca
         self.reg = LinearSVC(dual=False)
-        tasks = task.generate_tasks(seq_len=exp_options.seq_len, max_n_seq=exp_options.max_n_seq)
+        self.task = task
+        tasks = task.generate_tasks(seq_len=exp_options.seq_len,
+                                    max_n_seq=exp_options.max_n_seq)
 
         split = np.random.permutation(range(len(tasks)))
         self.training_tasks = np.array([tasks[i]
@@ -28,12 +33,16 @@ class Experiment:
         self.testing_tasks = np.array([tasks[i]
                                        for i in split[int(.8 * len(tasks)):]])
 
+    @property
+    def output_dim(self) -> int:
+        return self.task.output_dimension()
+
     def fit(self, return_data=False):
         all_data = []
 
         state = np.zeros((self.training_tasks.shape[0], self.ca.state_size))
         for t in range(self.training_tasks.shape[1] - 1):
-            inp = np.eye(2)[self.training_tasks[:, t]]
+            inp = to_dim_one_hot(self.training_tasks[:, t], self.output_dim)
             output, state = self.ca(state, inp)
             all_data.append(output[:, None, :, :])
         all_tgts = self.training_tasks[:, 1:].reshape(-1)
@@ -41,7 +50,8 @@ class Experiment:
         self.reg.fit(all_data, all_tgts)
 
         if return_data:
-            return all_data.reshape(len(self.training_tasks), -1, self.ca.output_size), all_tgts
+            return all_data.reshape(len(self.training_tasks), -1,
+                                    self.ca.output_size), all_tgts
 
     def eval_test(self):
         all_data = []

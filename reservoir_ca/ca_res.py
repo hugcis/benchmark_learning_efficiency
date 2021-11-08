@@ -15,8 +15,8 @@ class CAReservoir:
         # Convert to array and reverse the list
         self.rule_array = np.array(rule_list[::-1])
 
-        self.proj_matrix = np.zeros((inp_size, self.state_size))
         self.inp_size = inp_size
+        self.proj_matrix = np.zeros((self.inp_size, self.state_size))
         for t in range(self.redundancy):
             idx_x = np.random.permutation(inp_size)
             idx_y = np.random.choice(self.proj_factor, size=inp_size)
