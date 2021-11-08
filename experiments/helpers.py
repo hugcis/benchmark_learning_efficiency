@@ -93,6 +93,6 @@ def init_exp(name: str) -> Tuple[Result, argparse.Namespace, ExpOptions]:
     path = base / "experiment_results" / pathlib.Path(name)
     res = Result(path)
 
-    opts = ExpOptions(rules=[int(i)_for i in args.rules])
+    opts = ExpOptions(rules=[int(i) for i in args.rules])
 
     return res, args, opts
