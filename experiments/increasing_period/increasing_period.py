@@ -6,7 +6,7 @@ from reservoir_ca.experiment import Experiment
 from experiments.helpers import init_exp
 
 if __name__ == "__main__":
-    res, args, opts = init_exp("periodic_exp.pkl")
+    res, args, opts = init_exp("increasing_period_exp.pkl")
 
     for _ in range(opts.n_rep):
         per = IncreasingPeriod(5)

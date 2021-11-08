@@ -54,9 +54,18 @@ class AtomicOpen:
         else:                  return True
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--rules", nargs="+", default=list(range(256)))
-parser.add_argument("--seed", type=int, default=84923)
+def make_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    base_options = ExpOptions()
+    for opt in vars(base_options):
+        if opt == "rules" or opt == "seed":
+            continue
+        parser.add_argument(f"--{opt}", default=vars(base_options)[opt])
+
+    parser.add_argument("--rules", nargs="+", default=list(range(256)))
+    parser.add_argument("--seed", type=int, default=84923)
+
+    return parser
 
 
 class Result:
@@ -87,12 +96,16 @@ class Result:
         self.res = {}
 
 
-def init_exp(name: str) -> Tuple[Result, argparse.Namespace, ExpOptions]:
+def init_exp(name: str) -> Tuple[Result, ExpOptions]:
+    parser = make_parser()
     args = parser.parse_args()
     base = pathlib.Path().resolve()
     path = base / "experiment_results" / pathlib.Path(name)
     res = Result(path)
 
     opts = ExpOptions(rules=[int(i) for i in args.rules])
+    for p in vars(opts):
+        if p != "rule":
+            setattr(opts, p, vars(args)[p])
 
-    return res, args, opts
+    return res, opts
