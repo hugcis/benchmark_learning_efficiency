@@ -11,9 +11,9 @@ class Task(ABC):
         self.name = name
 
     @abstractmethod
-    def generate_tasks(self, max_n_seq: int = 10) -> List[List[str]]:
+    def generate_tasks(self, max_n_seq: int = 10, **kwargs) -> List[List[str]]:
         pass
-        del self, max_n_seq
+        del self, max_n_seq, kwargs
 
 
 class HybridTask(Task):
@@ -24,7 +24,7 @@ class HybridTask(Task):
             set_dictionary.update(task.dictionary)
 
 
-    def generate_tasks(self, max_n_seq: int = 10, **kwargs) -> List[List[str]]:
+    def generate_tasks(self, max_n_seq: int = 10) -> List[List[str]]:
         res = []
         # Each task contributes a fration of the total sequences
         max_n_per_task = max_n_seq // len(self.named_tasks)
@@ -239,7 +239,7 @@ def make_sentence(yes_names, no_names, verb, link_words=["AND", "BUT"]):
         base += add_yes(yes_names, verb)
         add = add_no(no_names, verb)
         if base and add:
-            base += [np.random.choice(["AND", "BUT"])]
+            base += [np.random.choice(link_words)]
             base += add
         elif add:
             base += add
