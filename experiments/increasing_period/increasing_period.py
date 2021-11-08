@@ -6,11 +6,12 @@ from reservoir_ca.experiment import Experiment
 from experiments.helpers import init_exp
 
 if __name__ == "__main__":
-    res, opts = init_exp("periodic_exp#.pkl")
+    res, opts = init_exp("increasing_per_exp#.pkl")
 
     for _ in tqdm(range(opts.n_rep)):
         per = IncreasingPeriod(5)
         ca = CAReservoir(0, 2)
+        opts.seq_len = 200
         exp = Experiment(ca, per, opts)
         for t in opts.rules:
             ca = CAReservoir(t, 2, redundancy=opts.redundancy)
