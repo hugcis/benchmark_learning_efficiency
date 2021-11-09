@@ -32,7 +32,7 @@ class Experiment:
         self.opts = exp_options
         self.ca = ca
         self.scaler = StandardScaler()
-        self.reg = LinearSVC(dual=False)
+        self.reg = LinearSVC(dual=False, C=1.)
         self.task = task
         tasks = task.generate_tasks(seq_len=exp_options.seq_len,
                                     max_n_seq=exp_options.max_n_seq)
@@ -68,10 +68,11 @@ class Experiment:
         return all_data, all_tgts
 
     def fit(self, return_data=False) -> Optional[Tuple[List[np.ndarray], List[np.ndarray]]]:
+        """ Fit the experiments' regressor on the training and testing data of its task. If
+            you set `return_data=True`, the model won't be fitted and the function will return
+            the training dataset processed by the CA reservoir as well as the targets.
+        """
         all_data, all_tgts = self.process_tasks(self.training_tasks)
-        # Flatten inp and targets for training of SVM
-        self.reg.fit(self.scaler.fit_transform(np.concatenate(all_data, axis=0)),
-                     np.concatenate(all_tgts, axis=0))
 
         if return_data:
             inp = [all_data[c].reshape(len(task_l), -1, self.ca.state_size)
@@ -80,6 +81,9 @@ class Experiment:
                    for c, task_l in enumerate(self.training_tasks)]
             return inp, tgts
         else:
+            # Flatten inp and targets for training of SVM
+            self.reg.fit(self.scaler.fit_transform(np.concatenate(all_data, axis=0)),
+                         np.concatenate(all_tgts, axis=0))
             return None
 
     def eval_test(self) -> float:

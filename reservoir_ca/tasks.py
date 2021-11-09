@@ -184,7 +184,7 @@ class HardSymbolCounting(TokenTask):
                  separator_symbol: str = "y",
                  query_symbol: str = "x"):
         super().__init__(lengths, dictionary +
-                         [query_symbol] +
+                         [query_symbol, separator_symbol] +
                          [str(i) for i in range(10)])
         assert query_symbol not in dictionary
         assert np.all([len(i) == 1 for i in dictionary])
@@ -192,15 +192,19 @@ class HardSymbolCounting(TokenTask):
         self.separator_symbol = separator_symbol
         self.base_dic = dictionary + [separator_symbol]
 
-    def generate_tasks(self, max_n_seq: int = 10):
+    def generate_tasks(self, max_n_seq: int = 10, **kwargs):
         tasks = []
         st = set()
         n_rand = max(max_n_seq // len(self.lengths), 1)
         for t in self.lengths:
             for _ in range(n_rand + 2):
                 left = np.random.choice(self.base_dic, size=t, replace=True).tolist()
-                while left[0] == self.separator_symbol:
+                while left and left[0] == self.separator_symbol:
                     left.pop(0)
+                while left and left[-1] == self.separator_symbol:
+                    left.pop(0)
+                if not left:
+                    continue
                 # No duplicates separator symbols
                 left = [v for i, v in enumerate(left)
                         if (i == 0
