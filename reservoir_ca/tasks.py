@@ -137,6 +137,7 @@ class BinaryNGrams(BinaryTask):
                 if task_str not in st:
                     tasks.append(task)
                     st.add(task_str)
+
         return tasks
 
 
@@ -158,7 +159,7 @@ class SymbolCounting(TokenTask):
         st = set()
         n_rand = max(max_n_seq // len(self.lengths), 1)
         for t in self.lengths:
-            for _ in range(n_rand):
+            for _ in range(n_rand + 2):
                 n_queries = np.random.randint(1, len(self.base_dic) + 1)
                 left = np.random.choice(self.base_dic, size=t, replace=True).tolist()
                 ct = collections.Counter(left)
@@ -169,7 +170,13 @@ class SymbolCounting(TokenTask):
                 if task_str not in st:
                     tasks.append(left[:])
                     st.add(task_str)
-        return tasks
+        if len(tasks) > max_n_seq:
+            return np.random.choice(np.array(tasks, dtype=np.object),
+                                    size=max_n_seq,
+                                    replace=False).tolist()
+        else:
+            return tasks
+
 
 class HardSymbolCounting(TokenTask):
     def __init__(self, lengths: Union[int, Sequence[int]],
@@ -190,7 +197,7 @@ class HardSymbolCounting(TokenTask):
         st = set()
         n_rand = max(max_n_seq // len(self.lengths), 1)
         for t in self.lengths:
-            for _ in range(n_rand):
+            for _ in range(n_rand + 2):
                 left = np.random.choice(self.base_dic, size=t, replace=True).tolist()
                 while left[0] == self.separator_symbol:
                     left.pop(0)
@@ -219,7 +226,13 @@ class HardSymbolCounting(TokenTask):
                 if task_str not in st:
                     tasks.append(left[:])
                     st.add(task_str)
-        return tasks
+        if len(tasks) > max_n_seq:
+            return np.random.choice(np.array(tasks, dtype=np.object),
+                                    size=max_n_seq,
+                                    replace=False).tolist()
+        else:
+            return tasks
+
 
 def add_no(no_names, verb):
         if no_names:
@@ -227,11 +240,13 @@ def add_no(no_names, verb):
         else:
             return []
 
+
 def add_yes(yes_names, verb):
     if yes_names:
         return ["I", verb] + yes_names
     else:
         return []
+
 
 def make_sentence(yes_names, no_names, verb, link_words=["AND", "BUT"]):
     base = []
@@ -252,6 +267,7 @@ def make_sentence(yes_names, no_names, verb, link_words=["AND", "BUT"]):
         elif add:
             base += add
     return base
+
 
 class ElementaryLanguage(TokenTask):
     def __init__(self,
@@ -308,5 +324,7 @@ class ElementaryLanguage(TokenTask):
                 st.add(task_str)
         return tasks
 
+
 def print_with_sep(tasks, sep="", lim=10):
+    """ Pretty print some examples from a task's generated sequences. """
     print("\n".join([sep.join([str(k) for k in s]) for s in tasks[:lim]]))

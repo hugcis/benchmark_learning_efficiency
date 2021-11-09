@@ -28,6 +28,7 @@ def group_by_lens(seqs: List[List[Any]]) -> List[np.ndarray]:
 
 class Experiment:
     def __init__(self, ca: CAReservoir, task: Task, exp_options: ExpOptions = ExpOptions()):
+        self.opts = exp_options
         self.ca = ca
         self.reg = LinearSVC(dual=False)
         self.task = task

@@ -9,7 +9,7 @@ if __name__ == "__main__":
     res, opts = init_exp("symbol_counting_exp#.pkl")
 
     for _ in tqdm(range(opts.n_rep)):
-        task = SymbolCounting(5)
+        task = SymbolCounting(8)
         ca = CAReservoir(0, task.output_dimension())
         exp = Experiment(ca, task, opts)
         for t in opts.rules:
