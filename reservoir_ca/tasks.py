@@ -24,14 +24,14 @@ class HybridTask(Task):
         set_dictionary = set()
         for task in self.named_tasks.values():
             set_dictionary.update(task.dictionary)
+        self.dictionary = list(set_dictionary)
 
-
-    def generate_tasks(self, max_n_seq: int = 10) -> List[List[str]]:
+    def generate_tasks(self, max_n_seq: int = 10, **kwargs) -> List[List[str]]:
         res = []
         # Each task contributes a fration of the total sequences
         max_n_per_task = max_n_seq // len(self.named_tasks)
         for n in self.named_tasks:
-            res = res + self.named_tasks[n].generate_tasks(max_n_seq=max_n_per_task)
+            res = res + self.named_tasks[n].generate_tasks(max_n_seq=max_n_per_task, **kwargs)
 
         return res
 
@@ -84,8 +84,8 @@ class Periodic(BinaryTask):
                 base = [int(i) for i in ft.format(s)]
                 task = base * (seq_len // len(base))
                 task = (task + base[:seq_len - len(task)])[:]
-
-                task_str = "".join([str(i) for i in task])
+                task = [str(i) for i in task]
+                task_str = "".join(task)
                 if task_str not in st:
                     tasks.append(task)
                     st.add(task_str)
@@ -112,8 +112,8 @@ class IncreasingPeriod(BinaryTask):
                     ct += 1
 
                 task = task[:seq_len]
-
-                task_str = "".join([str(i) for i in task])
+                task = [str(i) for i in task]
+                task_str = "".join(task)
                 if task_str not in st:
                     tasks.append(task)
                     st.add(task_str)
@@ -132,7 +132,8 @@ class BinaryNGrams(BinaryTask):
                 task = sum([[int(i) for i in ft.format(q)]
                             for q in seq], [])[:seq_len]
 
-                task_str = "".join([str(i) for i in task])
+                task = [str(i) for i in task]
+                task_str = "".join(task)
                 if task_str not in st:
                     tasks.append(task)
                     st.add(task_str)
