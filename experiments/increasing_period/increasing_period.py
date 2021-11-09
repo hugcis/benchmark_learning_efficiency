@@ -18,4 +18,4 @@ if __name__ == "__main__":
             exp.ca = ca
             exp.fit()
             res.update(t, exp.eval_test())
-        res.save()
+    res.save()
