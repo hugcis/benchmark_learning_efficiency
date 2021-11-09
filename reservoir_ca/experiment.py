@@ -3,6 +3,7 @@ from typing import List, Any, Tuple, Optional
 
 import numpy as np
 from sklearn.svm import LinearSVC
+from sklearn.preprocessing import StandardScaler
 
 from reservoir_ca.ca_res import CAReservoir
 from reservoir_ca.tasks import Task
@@ -30,6 +31,7 @@ class Experiment:
     def __init__(self, ca: CAReservoir, task: Task, exp_options: ExpOptions = ExpOptions()):
         self.opts = exp_options
         self.ca = ca
+        self.scaler = StandardScaler()
         self.reg = LinearSVC(dual=False)
         self.task = task
         tasks = task.generate_tasks(seq_len=exp_options.seq_len,
@@ -68,7 +70,8 @@ class Experiment:
     def fit(self, return_data=False) -> Optional[Tuple[List[np.ndarray], List[np.ndarray]]]:
         all_data, all_tgts = self.process_tasks(self.training_tasks)
         # Flatten inp and targets for training of SVM
-        self.reg.fit(np.concatenate(all_data, axis=0), np.concatenate(all_tgts, axis=0))
+        self.reg.fit(self.scaler.fit_transform(np.concatenate(all_data, axis=0)),
+                     np.concatenate(all_tgts, axis=0))
 
         if return_data:
             inp = [all_data[c].reshape(len(task_l), -1, self.ca.state_size)
@@ -82,4 +85,5 @@ class Experiment:
     def eval_test(self) -> float:
         all_data, all_tgts = self.process_tasks(self.testing_tasks)
 
-        return self.reg.score(np.concatenate(all_data, axis=0), np.concatenate(all_tgts, axis=0))
+        return self.reg.score(self.scaler.transform(np.concatenate(all_data, axis=0)),
+                              np.concatenate(all_tgts, axis=0))
