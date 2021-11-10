@@ -7,7 +7,7 @@ from typing import Dict, Tuple
 
 import numpy as np
 
-from reservoir_ca.experiment import ExpOptions
+from reservoir_ca.experiment import ExpOptions, NAME_TO_REG_TYPE, RegType
 
 try:
     # Posix based file locking (Linux, Ubuntu, MacOS, etc.)
@@ -46,6 +46,7 @@ class AtomicOpen:
 
     # Unlock the file and close the file object.
     def __exit__(self, exc_type=None, exc_value=None, traceback=None):
+        del exc_value, traceback
         # Flush to make sure all buffered contents are written to file.
         self.file.flush()
         os.fsync(self.file.fileno())
@@ -63,14 +64,16 @@ def make_parser() -> argparse.ArgumentParser:
     base_options = ExpOptions()
     opts_dict = asdict(base_options)
     for opt in opts_dict:
-        if opt == "rules" or opt == "seed":
+        if opt == "rules" or opt == "seed" or opt == "reg_type":
             continue
-        parser.add_argument(f"--{opt}", default=vars(base_options)[opt],
+        parser.add_argument(f"--{opt}", default=vars(base_options).get(opt, None),
                             type=type(opts_dict[opt]))
 
+    parser.add_argument("--results-file-name", type=str, default=None)
     parser.add_argument("--rules", nargs="+", default=list(range(256)))
     parser.add_argument("--seed", type=int, default=84923)
-
+    parser.add_argument("--reg-type", type=str, default="linearsvm",
+                        choices=["linearsvm", "rbfsvm", "linear", "rbf"])
     return parser
 
 
@@ -107,9 +110,14 @@ def init_exp(name: str) -> Tuple[Result, ExpOptions]:
     args = parser.parse_args()
     opts = ExpOptions(rules=[int(i) for i in args.rules])
     for p in vars(opts):
-        if p != "rules":
+        if p != "reg_type" and p != "rules" and p in vars(args):
             setattr(opts, p, vars(args)[p])
+        elif p == "reg_type":
+            opts.reg_type = RegType.from_str(args.reg_type)
 
+    # Base file name for experiments can be overridden in the CLI options
+    if args.results_file_name is not None and "#" in args.results_file_name:
+        name = args.results_file_name
     name = name.replace("#", f"_{opts.redundancy}")
     base = pathlib.Path().resolve()
     path = base / "experiment_results" / pathlib.Path(name)

@@ -1,12 +1,28 @@
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import List, Any, Tuple, Optional
 
 import numpy as np
-from sklearn.svm import LinearSVC
+from sklearn.svm import LinearSVC, SVC
 from sklearn.preprocessing import StandardScaler
 
 from reservoir_ca.ca_res import CAReservoir
 from reservoir_ca.tasks import Task
+
+
+class RegType(Enum):
+    LINEARSVM = 1
+    RBFSVM = 2
+
+    @staticmethod
+    def from_str(label: str) -> "RegType":
+        if label in ("linearsvm", "linear"):
+            return RegType.LINEARSVM
+        elif label in ("rbfsvm", "rbf"):
+            return RegType.RBFSVM
+        else:
+            raise NotImplementedError
+
 
 @dataclass
 class ExpOptions:
@@ -16,6 +32,7 @@ class ExpOptions:
     seed: int = 0
     redundancy: int = 4
     rules: list[int] = field(default_factory=lambda : list(range(256)))
+    reg_type: RegType = RegType.LINEARSVM
 
 
 def to_dim_one_hot(data, out_dim):
@@ -32,7 +49,10 @@ class Experiment:
         self.opts = exp_options
         self.ca = ca
         self.scaler = StandardScaler()
-        self.reg = LinearSVC(dual=False, C=1.)
+        if exp_options.reg_type == RegType.LINEARSVM:
+            self.reg = LinearSVC(dual=False, C=1.)
+        elif exp_options.reg_type == RegType.RBFSVM:
+            self.reg = SVC(kernel="rbf", dual=False, C=1.)
         self.task = task
         tasks = task.generate_tasks(seq_len=exp_options.seq_len,
                                     max_n_seq=exp_options.max_n_seq)
