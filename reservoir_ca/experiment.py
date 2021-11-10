@@ -52,7 +52,7 @@ class Experiment:
         if exp_options.reg_type == RegType.LINEARSVM:
             self.reg = LinearSVC(dual=False, C=1.)
         elif exp_options.reg_type == RegType.RBFSVM:
-            self.reg = SVC(kernel="rbf", dual=False, C=1.)
+            self.reg = SVC(kernel="rbf", C=1.)
         self.task = task
         tasks = task.generate_tasks(seq_len=exp_options.seq_len,
                                     max_n_seq=exp_options.max_n_seq)
