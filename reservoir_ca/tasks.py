@@ -294,7 +294,7 @@ class ElementaryLanguage(TokenTask):
                        sentence_term_symbol, "YES", "NO"]
         super().__init__(0, dictionary)
 
-    def generate_tasks(self, max_n_seq: int = 10):
+    def generate_tasks(self, max_n_seq: int = 10 , **kwargs):
         tasks = []
         st = set()
         for _ in range(max_n_seq):

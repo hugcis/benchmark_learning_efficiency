@@ -1,3 +1,8 @@
+"""
+Helper function for running the experiments. Since all experiments will be
+run in parallel we use file locking to ensure that each write to the aggregated
+result file is atomic.
+"""
 from dataclasses import asdict
 import random
 import pickle as pkl
@@ -60,6 +65,13 @@ class AtomicOpen:
 
 
 def make_parser() -> argparse.ArgumentParser:
+    """
+    Creates the command line interface. Many of its options are indirectly
+    generated from the ExpOptions dataclass.
+
+    Returns:
+        an ArgumentParser instance to parse CL arguments.
+    """
     parser = argparse.ArgumentParser()
     base_options = ExpOptions()
     opts_dict = asdict(base_options)
@@ -78,6 +90,17 @@ def make_parser() -> argparse.ArgumentParser:
 
 
 class Result:
+    """
+    A class to manage and update results for the experiments. The experiments are
+    run separately for different CA rules and stored in a dictionary `res`. This
+    dictionary has one list of scores for each rule.
+
+    Each parallel job has a separate `Result` instance which points to the results
+    file and hold a temporary copy of the current scores, updated with `res.update(score)`.
+
+    When finished, the scores can be flushed in a thread-safe way to the results file with
+    `res.save()`.
+    """
     res: Dict[int, list[float]]
 
     def __init__(self, path: pathlib.Path):
