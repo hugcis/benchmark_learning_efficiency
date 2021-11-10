@@ -2,11 +2,12 @@ from tqdm import tqdm
 
 from reservoir_ca.tasks import HardSymbolCounting
 from reservoir_ca.ca_res import CAReservoir
-from reservoir_ca.experiment import Experiment
+from reservoir_ca.experiment import Experiment, RegType
 from experiments.helpers import init_exp
 
 if __name__ == "__main__":
-    res, opts = init_exp("hard_sym_count_exp#.pkl")
+    res, opts = init_exp("hard_sym_count_rbf_exp#.pkl")
+    opts.reg_type = RegType.RBFSVM
 
     for _ in tqdm(range(opts.n_rep)):
         task = HardSymbolCounting(10)

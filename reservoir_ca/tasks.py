@@ -1,7 +1,19 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from typing import Union, Sequence, Dict, List
+from typing import Union, Sequence, Dict, List, Tuple, Optional
 import collections
+
+TaskType = List[List[str]]
+Mask = Optional[List[List[int]]]
+
+def choose_minimal_set(tasks: TaskType, max_n_seq: int,
+                       mask: Mask = None) -> Tuple[TaskType, Mask]:
+    if len(tasks) > max_n_seq:
+        idx = np.random.choice(range(len(tasks)), size=max_n_seq,
+                                replace=False)
+        return [tasks[i] for i in idx], [mask[i] for i in idx]
+    else:
+        return tasks, mask
 
 
 class Task(ABC):
@@ -11,12 +23,13 @@ class Task(ABC):
         self.name = name
 
     @abstractmethod
-    def generate_tasks(self, max_n_seq: int = 10, **kwargs) -> List[List[str]]:
+    def generate_tasks(self, max_n_seq: int = 10, **kwargs) -> Tuple[TaskType, Mask]:
         pass
         del self, max_n_seq, kwargs
 
     def output_dimension(self) -> int:
         return len(self.dictionary)
+
 
 class HybridTask(Task):
     def __init__(self, named_tasks: Dict[str, Task]):
@@ -26,14 +39,18 @@ class HybridTask(Task):
             set_dictionary.update(task.dictionary)
         self.dictionary = list(set_dictionary)
 
-    def generate_tasks(self, max_n_seq: int = 10, **kwargs) -> List[List[str]]:
-        res = []
+    def generate_tasks(self, max_n_seq: int = 10, **kwargs):
+        res: TaskType = []
+        msk: Mask = []
         # Each task contributes a fration of the total sequences
         max_n_per_task = max_n_seq // len(self.named_tasks)
         for n in self.named_tasks:
-            res = res + self.named_tasks[n].generate_tasks(max_n_seq=max_n_per_task, **kwargs)
-
-        return res
+            task, mask = self.named_tasks[n].generate_tasks(max_n_seq=max_n_per_task, **kwargs)
+            res = res + task
+            # TODO Take care of cases where some tasks have masks and others don't
+            if mask is not None:
+                msk = msk + mask
+        return res, msk
 
 
 class BinaryTask(Task):
@@ -75,7 +92,7 @@ class TokenTask(Task):
 
 class Periodic(BinaryTask):
     """ Generate all binary periodic sequences with lengths. """
-    def generate_tasks(self, seq_len: int = 100, max_n_seq: int = 10) -> List[List[str]]:
+    def generate_tasks(self, seq_len: int = 100, max_n_seq: int = 10) -> Tuple[TaskType, Mask]:
         tasks = []
         st = set()
         for t in self.lengths:
@@ -89,14 +106,14 @@ class Periodic(BinaryTask):
                 if task_str not in st:
                     tasks.append(task)
                     st.add(task_str)
-        return tasks[:max_n_seq]
+        return choose_minimal_set(tasks, max_n_seq)
 
 
 class IncreasingPeriod(BinaryTask):
     """ Generate all binary periodic sequences with increasing periods with
         lengths.
     """
-    def generate_tasks(self, seq_len: int = 100, max_n_seq: int = 10) -> List[List[str]]:
+    def generate_tasks(self, seq_len: int = 100, max_n_seq: int = 10) -> Tuple[TaskType, Mask]:
         tasks = []
         st = set()
         for t in self.lengths:
@@ -117,12 +134,12 @@ class IncreasingPeriod(BinaryTask):
                 if task_str not in st:
                     tasks.append(task)
                     st.add(task_str)
-        return tasks[:max_n_seq]
+        return choose_minimal_set(tasks, max_n_seq)
 
 
 class BinaryNGrams(BinaryTask):
     """ Generate random sequences with N-Grams of length in lenghts. """
-    def generate_tasks(self, seq_len: int = 100, max_n_seq: int = 10) -> List[List[str]]:
+    def generate_tasks(self, seq_len: int = 100, max_n_seq: int = 10) -> Tuple[TaskType, Mask]:
         tasks = []
         st = set()
         for t in self.lengths:
@@ -137,8 +154,7 @@ class BinaryNGrams(BinaryTask):
                 if task_str not in st:
                     tasks.append(task)
                     st.add(task_str)
-
-        return tasks
+        return choose_minimal_set(tasks, max_n_seq)
 
 
 class SymbolCounting(TokenTask):
@@ -156,26 +172,25 @@ class SymbolCounting(TokenTask):
     def generate_tasks(self, max_n_seq: int = 10, **kwargs):
         del kwargs
         tasks = []
+        mask = []
         st = set()
         n_rand = max(max_n_seq // len(self.lengths), 1)
         for t in self.lengths:
             for _ in range(n_rand + 2):
+                current_task_mask = []
                 n_queries = np.random.randint(1, len(self.base_dic) + 1)
                 left = np.random.choice(self.base_dic, size=t, replace=True).tolist()
                 ct = collections.Counter(left)
                 tk = np.random.choice(self.base_dic, size=n_queries, replace=False)
                 for tc in tk:
                     left = left + [self.query_symbol, tc, str(ct[tc])]
+                    current_task_mask.append(len(left) - 1)
                 task_str = "".join(left)
                 if task_str not in st:
                     tasks.append(left[:])
+                    mask.append(current_task_mask[:])
                     st.add(task_str)
-        if len(tasks) > max_n_seq:
-            return np.random.choice(np.array(tasks, dtype=np.object),
-                                    size=max_n_seq,
-                                    replace=False).tolist()
-        else:
-            return tasks
+        return choose_minimal_set(tasks, max_n_seq, mask=mask)
 
 
 class HardSymbolCounting(TokenTask):
@@ -194,10 +209,12 @@ class HardSymbolCounting(TokenTask):
 
     def generate_tasks(self, max_n_seq: int = 10, **kwargs):
         tasks = []
+        mask = []
         st = set()
         n_rand = max(max_n_seq // len(self.lengths), 1)
         for t in self.lengths:
             for _ in range(n_rand + 2):
+                current_task_mask = []
                 left = np.random.choice(self.base_dic, size=t, replace=True).tolist()
                 while left and left[0] == self.separator_symbol:
                     left.pop(0)
@@ -220,22 +237,21 @@ class HardSymbolCounting(TokenTask):
                 left = left + [self.query_symbol]
                 for tc in tk:
                     left = left + list(tc) + [self.separator_symbol, str(ct[tc])]
+                    current_task_mask.append(len(left) - 1)
                     if np.random.random() > 0.8:
                         negative = list(3 * tc[:])
                         np.random.shuffle(negative)
                         negative = negative[:len(tc) + np.random.randint(-2, 3)]
                         if negative and not "".join(negative) in ct:
                             left = left + negative + [self.separator_symbol,"0"]
+                            current_task_mask.append(len(left) - 1)
+
                 task_str = "".join(left)
                 if task_str not in st:
                     tasks.append(left[:])
+                    mask.append(current_task_mask)
                     st.add(task_str)
-        if len(tasks) > max_n_seq:
-            return np.random.choice(np.array(tasks, dtype=np.object),
-                                    size=max_n_seq,
-                                    replace=False).tolist()
-        else:
-            return tasks
+        return choose_minimal_set(tasks, max_n_seq, mask=mask)
 
 
 def add_no(no_names, verb):
@@ -290,14 +306,16 @@ class ElementaryLanguage(TokenTask):
         self.separator_symbol = separator_symbol
         dictionary = object_names + verbs #+ color_adj
         dictionary += ["I", "DO", "NOT", "AND", "BUT",
-                       separator_symbol, query_symbol,
+                       query_symbol,
                        sentence_term_symbol, "YES", "NO"]
         super().__init__(0, dictionary)
 
     def generate_tasks(self, max_n_seq: int = 10 , **kwargs):
-        tasks = []
+        tasks: TaskType = []
+        mask: Mask = []
         st = set()
         for _ in range(max_n_seq):
+            current_mask = []
             verb = np.random.choice(self.verbs)
 
             # Choose a subset of object names to work with
@@ -312,21 +330,23 @@ class ElementaryLanguage(TokenTask):
             if yes_names:
                 yes_names = " AND ".join(yes_names).split(" ")
             no_names = [i for i in subset if i not in yes_names]
-
             if no_names:
                 no_names = " AND ".join(no_names).split(" ")
 
             # Build the sentence
             task = make_sentence(yes_names, no_names, verb)
             tgt = np.random.choice(subset)
+            # Make the answer
             task += ([self.sentence_term_symbol] +
                      ["DO", "I", verb, tgt, self.query_symbol] +
                      ["YES" if tgt in yes_names else "NO"])
+            current_mask.append(len(task) - 1)
             task_str = self.separator_symbol.join(task)
             if task_str not in st:
                 tasks.append(task)
+                mask.append(current_mask)
                 st.add(task_str)
-        return tasks
+        return choose_minimal_set(tasks, max_n_seq, mask=mask)
 
 
 def print_with_sep(tasks, sep="", lim=10):

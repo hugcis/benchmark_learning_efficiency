@@ -33,6 +33,7 @@ class ExpOptions:
     redundancy: int = 4
     rules: list[int] = field(default_factory=lambda : list(range(256)))
     reg_type: RegType = RegType.LINEARSVM
+    ignore_mask: bool = True
 
 
 def to_dim_one_hot(data, out_dim):
@@ -54,8 +55,8 @@ class Experiment:
         elif exp_options.reg_type == RegType.RBFSVM:
             self.reg = SVC(kernel="rbf", C=1.)
         self.task = task
-        tasks = task.generate_tasks(seq_len=exp_options.seq_len,
-                                    max_n_seq=exp_options.max_n_seq)
+        tasks, mask = task.generate_tasks(seq_len=exp_options.seq_len,
+                                          max_n_seq=exp_options.max_n_seq)
 
         self.dic = {d: n for n, d in enumerate(self.task.dictionary)}
 
