@@ -7,7 +7,7 @@ from typing import Dict, Tuple
 
 import numpy as np
 
-from reservoir_ca.experiment import ExpOptions, NAME_TO_REG_TYPE, RegType
+from reservoir_ca.experiment import ExpOptions, RegType
 
 try:
     # Posix based file locking (Linux, Ubuntu, MacOS, etc.)
