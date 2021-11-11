@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from typing import Union, Sequence, Dict, List, Tuple, Optional
+from typing import Any, Type, Union, Sequence, Dict, List, Tuple, Optional
 import collections
 
 TaskType = List[List[str]]
@@ -11,12 +11,20 @@ def choose_minimal_set(tasks: TaskType, max_n_seq: int,
     if len(tasks) > max_n_seq:
         idx = np.random.choice(range(len(tasks)), size=max_n_seq,
                                 replace=False)
-        return [tasks[i] for i in idx], [mask[i] for i in idx]
+        if mask is not None:
+            return_mask = [mask[i] for i in idx]
+        else:
+            return_mask = None
+        return [tasks[i] for i in idx], return_mask
     else:
         return tasks, mask
 
 
 class Task(ABC):
+    """
+    Abstract base class for tasks. A task should have a dictionary member that
+    contains all the possible symbols used in the generated sequences
+    """
     dictionary: List[str]
 
     def __init__(self, name: str):
@@ -32,8 +40,16 @@ class Task(ABC):
 
 
 class HybridTask(Task):
-    def __init__(self, named_tasks: Dict[str, Task]):
-        self.named_tasks = named_tasks
+    def __init__(self, named_tasks: Dict[str, Type[Task]],
+                 task_args: Dict[str, List[Any]]):
+
+        self.named_tasks = {}
+        # With this, we create a new instance of each subtask every time we create a new
+        # HybridTask
+        for n in named_tasks:
+            self.named_tasks[n] = named_tasks[n](*task_args.get(n, []))
+
+        # The dictionary is the union of all subtask dictionaries
         set_dictionary = set()
         for task in self.named_tasks.values():
             set_dictionary.update(task.dictionary)
@@ -41,14 +57,16 @@ class HybridTask(Task):
 
     def generate_tasks(self, max_n_seq: int = 10, **kwargs):
         res: TaskType = []
-        msk: Mask = []
-        # Each task contributes a fration of the total sequences
+        msk: Mask = None
+        # Each task contributes a fraction of the total sequences
         max_n_per_task = max_n_seq // len(self.named_tasks)
         for n in self.named_tasks:
             task, mask = self.named_tasks[n].generate_tasks(max_n_seq=max_n_per_task, **kwargs)
             res = res + task
             # TODO Take care of cases where some tasks have masks and others don't
             if mask is not None:
+                if msk is None:
+                    msk = []
                 msk = msk + mask
         return res, msk
 
@@ -215,7 +233,9 @@ class HardSymbolCounting(TokenTask):
         for t in self.lengths:
             for _ in range(n_rand + 2):
                 current_task_mask = []
-                left = np.random.choice(self.base_dic, size=t, replace=True).tolist()
+                left = np.random.choice(
+                    self.base_dic + [self.separator_symbol] * (len(self.base_dic) - 1),
+                    size=t, replace=True).tolist()
                 while left and left[0] == self.separator_symbol:
                     left.pop(0)
                 while left and left[-1] == self.separator_symbol:

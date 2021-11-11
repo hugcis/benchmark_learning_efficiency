@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.svm import LinearSVC, SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 from reservoir_ca.ca_res import CAReservoir
 from reservoir_ca.tasks import Task
@@ -15,6 +16,7 @@ class RegType(Enum):
     LINEARSVM = 1
     RBFSVM = 2
     MLP = 3
+    RANDOMFOREST = 4
 
     @staticmethod
     def from_str(label: str) -> "RegType":
@@ -24,6 +26,8 @@ class RegType(Enum):
             return RegType.RBFSVM
         elif label in ("mlp", "neural_network"):
             return RegType.MLP
+        elif label in ("randomforest"):
+            return RegType.RANDOMFOREST
         else:
             raise NotImplementedError
 
@@ -69,6 +73,8 @@ class Experiment:
             self.reg = SVC(kernel="rbf", C=1.)
         elif exp_options.reg_type == RegType.MLP:
             self.reg = MLPClassifier(hidden_layer_sizes=(100, 200, 100))
+        elif exp_options.reg_type == RegType.RANDOMFOREST:
+            self.reg = RandomForestClassifier(n_estimators=100)
 
         self.task = task
         tasks, masks = task.generate_tasks(seq_len=exp_options.seq_len,
