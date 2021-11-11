@@ -40,9 +40,18 @@ def to_dim_one_hot(data, out_dim):
     return np.eye(out_dim)[data]
 
 
-def group_by_lens(seqs: List[List[Any]]) -> List[np.ndarray]:
+def group_by_lens(
+        seqs: List[List[Any]],
+        masks: Optional[List[List[int]]] = None
+) -> Tuple[List[np.ndarray], Optional[List[List[int]]]]:
     lens = set(len(c) for c in seqs)
-    return [np.array([c for c in seqs if len(c) == l]) for l in lens]
+    grouped_seqs = []
+    grouped_masks = []
+    for l in lens:
+        grouped_seqs.append(np.array([c for c in seqs if len(c) == l]))
+        if masks is not None:
+            grouped_masks.append([masks[n] for n, c in enumerate(seqs) if len(c) == l])
+    return grouped_seqs, grouped_masks if masks is not None else None
 
 
 class Experiment:
@@ -55,34 +64,57 @@ class Experiment:
         elif exp_options.reg_type == RegType.RBFSVM:
             self.reg = SVC(kernel="rbf", C=1.)
         self.task = task
-        tasks, mask = task.generate_tasks(seq_len=exp_options.seq_len,
-                                          max_n_seq=exp_options.max_n_seq)
+        tasks, masks = task.generate_tasks(seq_len=exp_options.seq_len,
+                                           max_n_seq=exp_options.max_n_seq)
 
         self.dic = {d: n for n, d in enumerate(self.task.dictionary)}
 
+        # Split into a training and testing set
         split = np.random.permutation(range(len(tasks)))
         train_seqs = [[self.dic[k] for k in tasks[i]]
                       for i in split[:int(.8 * len(tasks))]]
-        self.training_tasks = group_by_lens(train_seqs)
         test_seqs = [[self.dic[k] for k in tasks[i]]
                      for i in split[int(.8 * len(tasks)):]]
-        self.testing_tasks = group_by_lens(test_seqs)
+
+        # For masked tasks compute masks
+        if masks is not None and not self.opts.ignore_mask:
+            train_masks = [masks[i] for i in split[:int(.8 * len(tasks))]]
+            test_masks = [masks[i] for i in split[int(.8 * len(tasks)):]]
+        else:
+            train_masks, test_masks = None, None
+
+        # Group sequences by lengths for batch processing
+        self.training_tasks, self.training_masks = group_by_lens(train_seqs, train_masks)
+        self.testing_tasks, self.testing_masks = group_by_lens(test_seqs, test_masks)
 
     @property
     def output_dim(self) -> int:
         return self.task.output_dimension()
 
-    def process_tasks(self, tasks) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def process_tasks(self, tasks: List[np.ndarray],
+                      masks: Optional[List[List[int]]] = None) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         all_data = []
         all_tgts = []
-        for task_l in tasks:
+        for l_idx, task_l in enumerate(tasks):
             single_length_data = []
+            single_length_tgts = []
             state = np.zeros((task_l.shape[0], self.ca.state_size))
             for t in range(task_l.shape[1] - 1):
                 inp = to_dim_one_hot(task_l[:, t], self.output_dim)
                 output, state = self.ca(state, inp)
-                single_length_data.append(output[:, None, :, :])
-            single_length_tgts = task_l[:, 1:].reshape(-1)
+                if masks is not None:
+                    for q in range(output.shape[0]):
+                        if t + 1 in masks[l_idx][q]:
+                            single_length_data.append(output[q:q+1, None, :, :])
+                            single_length_tgts.append(task_l[q:q+1, t + 1])
+                else:
+                    single_length_data.append(output[:, None, :, :])
+            if masks is None:
+                single_length_tgts = task_l[:, 1:].reshape(-1)
+            else:
+                single_length_data = np.concatenate(single_length_data, axis=0)
+                single_length_tgts = np.concatenate(single_length_tgts, axis=0)
+            # print(single_length_data, single_length_tgts)
 
             all_data.append(np.concatenate(single_length_data, axis=1).reshape(-1, self.ca.output_size))
             all_tgts.append(single_length_tgts)
@@ -93,7 +125,7 @@ class Experiment:
             you set `return_data=True`, the model won't be fitted and the function will return
             the training dataset processed by the CA reservoir as well as the targets.
         """
-        all_data, all_tgts = self.process_tasks(self.training_tasks)
+        all_data, all_tgts = self.process_tasks(self.training_tasks, self.training_masks)
 
         if return_data:
             inp = [all_data[c].reshape(len(task_l), -1, self.ca.state_size)

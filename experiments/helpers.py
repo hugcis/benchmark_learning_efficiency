@@ -8,11 +8,14 @@ import random
 import pickle as pkl
 import pathlib
 import argparse
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Type, List, Any
 
 import numpy as np
+from tqdm import tqdm
 
-from reservoir_ca.experiment import ExpOptions, RegType
+from reservoir_ca.experiment import ExpOptions, Experiment, RegType
+from reservoir_ca.ca_res import CAReservoir
+from reservoir_ca.tasks import Task
 
 try:
     # Posix based file locking (Linux, Ubuntu, MacOS, etc.)
@@ -151,3 +154,24 @@ def init_exp(name: str) -> Tuple[Result, ExpOptions]:
     np.random.seed(seed)
 
     return res, opts
+
+
+def run_task(fname: str, task_cls: Type[Task], cls_args: List[Any],
+             opts_extra: Dict[str, Any] = {}):
+    res, opts = init_exp(fname)
+    for k, v in opts_extra.items():
+        if not hasattr(opts, k):
+            raise ValueError(f"Wrong option {k} passed to opts.")
+        setattr(opts, k, v)
+    print(opts)
+    for _ in tqdm(range(opts.n_rep), miniters=10):
+        task = task_cls(*cls_args)
+        ca = CAReservoir(0, task.output_dimension())
+        exp = Experiment(ca, task, opts)
+        for t in opts.rules:
+            ca = CAReservoir(t, task.output_dimension(),
+                             redundancy=opts.redundancy)
+            exp.ca = ca
+            exp.fit()
+            res.update(t, exp.eval_test())
+    res.save()
