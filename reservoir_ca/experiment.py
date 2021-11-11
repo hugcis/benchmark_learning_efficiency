@@ -5,6 +5,7 @@ from typing import List, Any, Tuple, Optional
 import numpy as np
 from sklearn.svm import LinearSVC, SVC
 from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import MLPClassifier
 
 from reservoir_ca.ca_res import CAReservoir
 from reservoir_ca.tasks import Task
@@ -13,6 +14,7 @@ from reservoir_ca.tasks import Task
 class RegType(Enum):
     LINEARSVM = 1
     RBFSVM = 2
+    MLP = 3
 
     @staticmethod
     def from_str(label: str) -> "RegType":
@@ -20,6 +22,8 @@ class RegType(Enum):
             return RegType.LINEARSVM
         elif label in ("rbfsvm", "rbf"):
             return RegType.RBFSVM
+        elif label in ("mlp", "neural_network"):
+            return RegType.MLP
         else:
             raise NotImplementedError
 
@@ -63,6 +67,9 @@ class Experiment:
             self.reg = LinearSVC(dual=False, C=1.)
         elif exp_options.reg_type == RegType.RBFSVM:
             self.reg = SVC(kernel="rbf", C=1.)
+        elif exp_options.reg_type == RegType.MLP:
+            self.reg = MLPClassifier(hidden_layer_sizes=(100, 200, 100))
+
         self.task = task
         tasks, masks = task.generate_tasks(seq_len=exp_options.seq_len,
                                            max_n_seq=exp_options.max_n_seq)
