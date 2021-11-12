@@ -231,10 +231,10 @@ class HardSymbolCounting(TokenTask):
         st = set()
         n_rand = max(max_n_seq // len(self.lengths), 1)
         for t in self.lengths:
-            for _ in range(n_rand + 2):
+            for _ in range(3 * n_rand):
                 current_task_mask = []
                 left = np.random.choice(
-                    self.base_dic + [self.separator_symbol] * (len(self.base_dic) - 1),
+                    self.base_dic + [self.separator_symbol] * 2 * len(self.base_dic),
                     size=t, replace=True).tolist()
                 while left and left[0] == self.separator_symbol:
                     left.pop(0)
@@ -258,12 +258,12 @@ class HardSymbolCounting(TokenTask):
                 for tc in tk:
                     left = left + list(tc) + [self.separator_symbol, str(ct[tc])]
                     current_task_mask.append(len(left) - 1)
-                    if np.random.random() > 0.8:
+                    if np.random.random() > 0.5:
                         negative = list(3 * tc[:])
                         np.random.shuffle(negative)
                         negative = negative[:len(tc) + np.random.randint(-2, 3)]
                         if negative and not "".join(negative) in ct:
-                            left = left + negative + [self.separator_symbol,"0"]
+                            left = left + negative + [self.separator_symbol, "0"]
                             current_task_mask.append(len(left) - 1)
 
                 task_str = "".join(left)
