@@ -39,6 +39,8 @@ class ExpOptions:
     n_rep: int = 10
     seed: int = 0
     redundancy: int = 4
+    r_height: int = 2
+    proj_factor: int = 40
     rules: list[int] = field(default_factory=lambda : list(range(256)))
     reg_type: RegType = RegType.LINEARSVM
     ignore_mask: bool = True

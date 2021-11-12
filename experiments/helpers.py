@@ -166,11 +166,15 @@ def run_task(fname: str, task_cls: Type[Task], cls_args: List[Any],
     print(opts)
     for _ in tqdm(range(opts.n_rep), miniters=10):
         task = task_cls(*cls_args)
-        ca = CAReservoir(0, task.output_dimension())
+        ca = CAReservoir(0, task.output_dimension(),
+                         r_height=opts.r_height,
+                         proj_factor=opts.proj_factor)
         exp = Experiment(ca, task, opts)
         for t in opts.rules:
             ca = CAReservoir(t, task.output_dimension(),
-                             redundancy=opts.redundancy)
+                             redundancy=opts.redundancy,
+                             r_height=opts.r_height,
+                             proj_factor=opts.proj_factor)
             exp.ca = ca
             exp.fit()
             res.update(t, exp.eval_test())
