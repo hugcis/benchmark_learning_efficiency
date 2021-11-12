@@ -1,6 +1,8 @@
+import json
+import dataclasses
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Any, Tuple, Optional
+from typing import Dict, List, Any, Tuple, Optional
 
 import numpy as np
 from sklearn.svm import LinearSVC, SVC
@@ -45,6 +47,22 @@ class ExpOptions:
     reg_type: RegType = RegType.LINEARSVM
     ignore_mask: bool = True
 
+    def to_json(self):
+        dict_rep = dataclasses.asdict(self)
+        for s in dict_rep:
+            if isinstance(dict_rep[s], Enum):
+                dict_rep[s] = dict_rep[s].name
+        return json.dumps(dict_rep)
+
+    @classmethod
+    def from_json(cls, json_str: str):
+        opts = cls()
+        for name, val in json.loads(json_str).items():
+            if isinstance(getattr(opts, name), Enum):
+                setattr(opts, name, type(getattr(opts, name))[val])
+            else:
+                setattr(opts, name, val)
+        return opts
 
 def to_dim_one_hot(data, out_dim):
     return np.eye(out_dim)[data]
