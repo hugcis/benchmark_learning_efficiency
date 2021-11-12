@@ -153,7 +153,7 @@ class Experiment:
             return None
 
     def eval_test(self) -> float:
-        all_data, all_tgts = self.process_tasks(self.testing_tasks)
+        all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
 
         return self.reg.score(self.scaler.transform(np.concatenate(all_data, axis=0)),
                               np.concatenate(all_tgts, axis=0))
