@@ -8,14 +8,14 @@ import random
 import pickle as pkl
 import pathlib
 import argparse
-from typing import Dict, Tuple, Type, List, Any
+from typing import Dict, Tuple, Type, List, Any, Optional
 
 import numpy as np
 from tqdm import tqdm
 
-from reservoir_ca.experiment import ExpOptions, Experiment, RegType
 from reservoir_ca.ca_res import CAReservoir
 from reservoir_ca.tasks import Task
+from reservoir_ca.experiment import ExpOptions, Experiment, ProjectionType, RegType
 
 try:
     # Posix based file locking (Linux, Ubuntu, MacOS, etc.)
@@ -79,16 +79,20 @@ def make_parser() -> argparse.ArgumentParser:
     base_options = ExpOptions()
     opts_dict = asdict(base_options)
     for opt in opts_dict:
-        if opt == "rules" or opt == "seed" or opt == "reg_type":
+        if opt == "rules" or opt == "seed" or opt == "reg_type" or opt == "proj_type":
             continue
         parser.add_argument(f"--{opt}", default=vars(base_options).get(opt, None),
                             type=type(opts_dict[opt]))
 
+    parser.add_argument("--return-name", default=False, action="store_true")
     parser.add_argument("--results-file-name", type=str, default=None)
     parser.add_argument("--rules", nargs="+", default=list(range(256)))
     parser.add_argument("--seed", type=int, default=84923)
     parser.add_argument("--reg-type", type=str, default="linearsvm",
-                        choices=["linearsvm", "rbfsvm", "linear", "rbf"])
+                        choices=["linearsvm", "rbfsvm", "linear", "rbf", "mlp",
+                                 "randomforest"])
+    parser.add_argument("--proj_type", type=str, default="one_to_one",
+                        choices=["one_to_one", "one_to_many", "one_to_pattern"])
     return parser
 
 
@@ -136,16 +140,24 @@ def init_exp(name: str) -> Tuple[Result, ExpOptions]:
     args = parser.parse_args()
     opts = ExpOptions(rules=[int(i) for i in args.rules])
     for p in vars(opts):
-        if p != "reg_type" and p != "rules" and p in vars(args):
+        if p != "proj_type" and p != "reg_type" and p != "rules" and p in vars(args):
             setattr(opts, p, vars(args)[p])
         elif p == "reg_type":
             opts.reg_type = RegType.from_str(args.reg_type)
+        elif p == "proj_type":
+            opts.proj_type = ProjectionType[args.proj_type.upper()]
 
     # Base file name for experiments can be overridden in the CLI options
     if args.results_file_name is not None and "#" in args.results_file_name:
         name = args.results_file_name
-    name = name.replace("#", f"_{opts.redundancy}")
+    json_opts = name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ".json")
     base = pathlib.Path().resolve()
+
+    opts_path = base / "experiment_results" / pathlib.Path(json_opts)
+    with open(opts_path, "w") as f:
+        f.write(opts.to_json())
+
+    name = name.replace("#", f"_{opts.hashed_repr()}")
     path = base / "experiment_results" / pathlib.Path(name)
     res = Result(path)
 
@@ -156,8 +168,16 @@ def init_exp(name: str) -> Tuple[Result, ExpOptions]:
     return res, opts
 
 
-def run_task(fname: str, task_cls: Type[Task], cls_args: List[Any],
-             opts_extra: Dict[str, Any] = {}):
+def get_name(task: Task,
+             opts_extra: Dict[str, Any] = {},
+             fname: Optional[str] = None):
+
+def run_task(task_cls: Type[Task], cls_args: List[Any],
+             opts_extra: Dict[str, Any] = {},
+             fname: Optional[str] = None):
+    task = task_cls(*cls_args)
+    if fname is None:
+        fname = task.name + "#.pkl"
     res, opts = init_exp(fname)
     for k, v in opts_extra.items():
         if not hasattr(opts, k):
@@ -165,7 +185,6 @@ def run_task(fname: str, task_cls: Type[Task], cls_args: List[Any],
         setattr(opts, k, v)
     print(opts)
     for _ in tqdm(range(opts.n_rep), miniters=10):
-        task = task_cls(*cls_args)
         ca = CAReservoir(0, task.output_dimension(),
                          r_height=opts.r_height,
                          proj_factor=opts.proj_factor)
@@ -174,7 +193,9 @@ def run_task(fname: str, task_cls: Type[Task], cls_args: List[Any],
             ca = CAReservoir(t, task.output_dimension(),
                              redundancy=opts.redundancy,
                              r_height=opts.r_height,
-                             proj_factor=opts.proj_factor)
+                             proj_factor=opts.proj_factor,
+                             proj_type=opts.proj_type,
+                             proj_pattern=opts.proj_pattern)
             exp.ca = ca
             exp.fit()
             res.update(t, exp.eval_test())

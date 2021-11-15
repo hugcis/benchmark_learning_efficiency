@@ -11,8 +11,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
 
-from reservoir_ca.ca_res import CAReservoir
-from reservoir_ca.tasks import Task
+from reservoir_ca.tasks import BinarizedTask, Task, TokenTask
+from reservoir_ca.ca_res import CAReservoir, ProjectionType
 
 
 class RegType(Enum):
@@ -47,10 +47,15 @@ class ExpOptions:
     rules: list[int] = field(default_factory=lambda : list(range(256)))
     reg_type: RegType = RegType.LINEARSVM
     ignore_mask: bool = True
-    binarized_task: bool = True
+    binarized_task: bool = False
+    proj_type: ProjectionType = ProjectionType.ONE_TO_ONE
+    proj_pattern: int = 4
 
-    def to_json(self):
+    def to_json(self, filter_out: Optional[List[str]] = ["rules"]):
         dict_rep = dataclasses.asdict(self)
+        if filter_out is not None:
+            for s in filter_out:
+                dict_rep.pop(s)
         for s in dict_rep:
             if isinstance(dict_rep[s], Enum):
                 dict_rep[s] = dict_rep[s].name
@@ -68,7 +73,7 @@ class ExpOptions:
 
     def hashed_repr(self) -> str:
         hasher = hashlib.md5()
-        hasher.update(self.to_json().encode())
+        hasher.update(self.to_json(filter_out=["rules"]).encode())
         return hasher.hexdigest()[:8]
 
 def to_dim_one_hot(data, out_dim):
@@ -103,7 +108,12 @@ class Experiment:
         elif exp_options.reg_type == RegType.RANDOMFOREST:
             self.reg = RandomForestClassifier(n_estimators=100)
 
-        self.task = task
+        if exp_options.binarized_task and isinstance(task, TokenTask):
+            self.task = BinarizedTask(task)
+        elif exp_options.binarized_task:
+            raise ValueError("Task cannot be binarized")
+        else:
+            self.task = task
         tasks, masks = task.generate_tasks(seq_len=exp_options.seq_len,
                                            max_n_seq=exp_options.max_n_seq)
 
@@ -161,9 +171,10 @@ class Experiment:
         return all_data, all_tgts
 
     def fit(self, return_data=False) -> Optional[Tuple[List[np.ndarray], List[np.ndarray]]]:
-        """ Fit the experiments' regressor on the training and testing data of its task. If
-            you set `return_data=True`, the model won't be fitted and the function will return
-            the training dataset processed by the CA reservoir as well as the targets.
+        """
+        Fit the experiments' regressor on the training and testing data of its task. If
+        you set `return_data=True`, the model won't be fitted and the function will return
+        the training dataset processed by the CA reservoir as well as the targets.
         """
         all_data, all_tgts = self.process_tasks(self.training_tasks, self.training_masks)
 
