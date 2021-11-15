@@ -3,6 +3,7 @@ Helper function for running the experiments. Since all experiments will be
 run in parallel we use file locking to ensure that each write to the aggregated
 result file is atomic.
 """
+import sys
 from dataclasses import asdict
 import random
 import pickle as pkl
@@ -150,6 +151,10 @@ def init_exp(name: str) -> Tuple[Result, ExpOptions]:
     # Base file name for experiments can be overridden in the CLI options
     if args.results_file_name is not None and "#" in args.results_file_name:
         name = args.results_file_name
+    if args.return_name:
+        print(name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ""))
+        sys.exit(0)
+
     json_opts = name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ".json")
     base = pathlib.Path().resolve()
 
@@ -168,16 +173,13 @@ def init_exp(name: str) -> Tuple[Result, ExpOptions]:
     return res, opts
 
 
-def get_name(task: Task,
-             opts_extra: Dict[str, Any] = {},
-             fname: Optional[str] = None):
-
 def run_task(task_cls: Type[Task], cls_args: List[Any],
              opts_extra: Dict[str, Any] = {},
              fname: Optional[str] = None):
     task = task_cls(*cls_args)
     if fname is None:
         fname = task.name + "#.pkl"
+
     res, opts = init_exp(fname)
     for k, v in opts_extra.items():
         if not hasattr(opts, k):

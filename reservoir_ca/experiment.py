@@ -51,7 +51,7 @@ class ExpOptions:
     proj_type: ProjectionType = ProjectionType.ONE_TO_ONE
     proj_pattern: int = 4
 
-    def to_json(self, filter_out: Optional[List[str]] = ["rules"]):
+    def to_json(self, filter_out: Optional[List[str]] = ["rules", "seed"]):
         dict_rep = dataclasses.asdict(self)
         if filter_out is not None:
             for s in filter_out:
