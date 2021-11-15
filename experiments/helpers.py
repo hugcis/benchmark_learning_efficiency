@@ -152,7 +152,6 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions]
         if not hasattr(opts, k):
             raise ValueError(f"Wrong option {k} passed to opts.")
         setattr(opts, k, v)
-    print(opts)
 
     # Base file name for experiments can be overridden in the CLI options
     if args.results_file_name is not None and "#" in args.results_file_name:
@@ -161,6 +160,7 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions]
         print(name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ""))
         sys.exit(0)
 
+    print(opts)
     json_opts = name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ".json")
     base = pathlib.Path().resolve()
 
