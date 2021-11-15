@@ -57,7 +57,7 @@ class CAReservoir:
                 raise ValueError("Parameter proj_pattern must be set for this projection type")
             for t in range(self.redundancy):
                 idx_x = np.random.permutation(self.inp_size)
-                idx_y = [np.random.choice(self.proj_factor, size=10)
+                idx_y = [np.random.choice(self.proj_factor, size=self.inp_size)
                          for _ in range(self.proj_pattern)]
                 for n, y in enumerate(idx_y):
                     proj_matrix[:, t * self.proj_factor:(t + 1) * self.proj_factor][idx_x, y] = 1
