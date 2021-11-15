@@ -136,7 +136,7 @@ class Result:
         self.res = {}
 
 
-def init_exp(name: str) -> Tuple[Result, ExpOptions]:
+def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions]:
     parser = make_parser()
     args = parser.parse_args()
     opts = ExpOptions(rules=[int(i) for i in args.rules])
@@ -147,6 +147,12 @@ def init_exp(name: str) -> Tuple[Result, ExpOptions]:
             opts.reg_type = RegType.from_str(args.reg_type)
         elif p == "proj_type":
             opts.proj_type = ProjectionType[args.proj_type.upper()]
+
+    for k, v in opts_extra.items():
+        if not hasattr(opts, k):
+            raise ValueError(f"Wrong option {k} passed to opts.")
+        setattr(opts, k, v)
+    print(opts)
 
     # Base file name for experiments can be overridden in the CLI options
     if args.results_file_name is not None and "#" in args.results_file_name:
@@ -180,12 +186,7 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
     if fname is None:
         fname = task.name + "#.pkl"
 
-    res, opts = init_exp(fname)
-    for k, v in opts_extra.items():
-        if not hasattr(opts, k):
-            raise ValueError(f"Wrong option {k} passed to opts.")
-        setattr(opts, k, v)
-    print(opts)
+    res, opts = init_exp(fname, opts_extra)
     for _ in tqdm(range(opts.n_rep), miniters=10):
         ca = CAReservoir(0, task.output_dimension(),
                          r_height=opts.r_height,
