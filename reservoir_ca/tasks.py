@@ -38,16 +38,30 @@ class Task(ABC):
     def output_dimension(self) -> int:
         return len(self.dictionary)
 
+    def set_lengths(self, lengths: Union[int, Sequence[int]]):
+        if isinstance(lengths, int) or len(lengths) == 1:
+            if not isinstance(lengths, int):
+                l = lengths[0]
+            else:
+                l = lengths
+            self.lengths = list(range(1, l + 1))
+        elif len(lengths) == 2:
+            if lengths[1] > lengths[0]:
+                self.lengths = list(range(lengths[0], lengths[1]))
+            else:
+                raise ValueError("Wrong lengths")
+        else:
+            self.lengths = lengths
 
 class HybridTask(Task):
     def __init__(self, named_tasks: Dict[str, Type[Task]],
                  task_args: Dict[str, List[Any]]):
-
         self.named_tasks = {}
         # With this, we create a new instance of each subtask every time we create a new
         # HybridTask
         for n in named_tasks:
             self.named_tasks[n] = named_tasks[n](*task_args.get(n, []))
+        super().__init__("hyb_{}".format("_".join(t.name for t in self.named_tasks.values())))
 
         # The dictionary is the union of all subtask dictionaries
         set_dictionary = set()
@@ -72,44 +86,48 @@ class HybridTask(Task):
 
 
 class BinaryTask(Task):
-    def __init__(self, lengths: Union[int, Sequence[int]]):
+    def __init__(self, name: str, lengths: Union[int, Sequence[int]]):
+        super().__init__(name)
         self.dictionary = ["0", "1"]
-        if isinstance(lengths, int) or len(lengths) == 1:
-            if not isinstance(lengths, int):
-                l = lengths[0]
-            else:
-                l = lengths
-            self.lengths = list(range(1, l + 1))
-        elif len(lengths) == 2:
-            if lengths[1] > lengths[0]:
-                self.lengths = list(range(lengths[0], lengths[1]))
-            else:
-                raise ValueError("Wrong lengths")
-        else:
-            self.lengths = lengths
-
+        self.set_lengths(lengths)
 
 class TokenTask(Task):
-    def __init__(self, lengths: Union[int, Sequence[int]],
+    def __init__(self, name: str, lengths: Union[int, Sequence[int]],
                  dictionary: Sequence[str] = ["A", "B", "C"]):
+        super().__init__(name)
         self.dictionary = list(dictionary)
-        if isinstance(lengths, int) or len(lengths) == 1:
-            if not isinstance(lengths, int):
-                l = lengths[0]
-            else:
-                l = lengths
-            self.lengths = list(range(1, l + 1))
-        elif len(lengths) == 2:
-            if lengths[1] > lengths[0]:
-                self.lengths = list(range(lengths[0], lengths[1]))
-            else:
-                raise ValueError("Wrong lengths")
-        else:
-            self.lengths = lengths
+        self.set_lengths(lengths)
+
+
+class BinarizedTask(Task):
+    """ Binarized version of a token class """
+    def __init__(self, base_task: TokenTask):
+        super().__init__("bin_{}".format(base_task.name))
+        self.base_task = base_task
+        self.dictionary = ["0", "1"]
+
+        self.enc_size = int(np.ceil(np.log2(len(self.base_task.dictionary))))
+        formatter = f"{{:0{self.enc_size}b}}"
+        self.mapping = {
+            d: formatter.format(n)
+            for n, d in enumerate(self.base_task.dictionary)
+        }
+
+    def convert_to_binary(self, task: TaskType, mask: Mask) -> Tuple[TaskType, Mask]:
+        task = [[c  for g in t for c in self.mapping[g]] for t in task]
+        mask = [[self.enc_size * c + i for i in range(self.enc_size) for c in m] for m in mask]
+        return task, mask
+
+    def generate_tasks(self, max_n_seq: int, **kwargs) -> Tuple[TaskType, Mask]:
+        task, mask = self.base_task.generate_tasks(max_n_seq=max_n_seq, **kwargs)
+        return self.convert_to_binary(task, mask)
 
 
 class Periodic(BinaryTask):
     """ Generate all binary periodic sequences with lengths. """
+    def __init__(self, lengths: Union[int, Sequence[int]]):
+        super().__init__("periodic", lengths)
+
     def generate_tasks(self, seq_len: int = 100, max_n_seq: int = 10) -> Tuple[TaskType, Mask]:
         tasks = []
         st = set()
@@ -131,6 +149,9 @@ class IncreasingPeriod(BinaryTask):
     """ Generate all binary periodic sequences with increasing periods with
         lengths.
     """
+    def __init__(self, lengths: Union[int, Sequence[int]]):
+        super().__init__("inc-per", lengths)
+
     def generate_tasks(self, seq_len: int = 100, max_n_seq: int = 10) -> Tuple[TaskType, Mask]:
         tasks = []
         st = set()
@@ -155,8 +176,11 @@ class IncreasingPeriod(BinaryTask):
         return choose_minimal_set(tasks, max_n_seq)
 
 
-class BinaryNGrams(BinaryTask):
+class RandomPeriodic(BinaryTask):
     """ Generate random sequences with N-Grams of length in lenghts. """
+    def __init__(self, lengths: Union[int, Sequence[int]]):
+        super().__init__("rand-per", lengths)
+
     def generate_tasks(self, seq_len: int = 100, max_n_seq: int = 10) -> Tuple[TaskType, Mask]:
         tasks = []
         st = set()
@@ -179,7 +203,7 @@ class SymbolCounting(TokenTask):
     def __init__(self, lengths: Union[int, Sequence[int]],
                  dictionary: List[str] = ["A", "B", "C"],
                  query_symbol: str = "x"):
-        super().__init__(lengths, dictionary +
+        super().__init__("sym-ct", lengths, dictionary +
                          [query_symbol] +
                          [str(i) for i in range(10)])
         assert query_symbol not in dictionary
@@ -216,7 +240,7 @@ class HardSymbolCounting(TokenTask):
                  dictionary: List[str] = ["A", "B", "C"],
                  separator_symbol: str = "y",
                  query_symbol: str = "x"):
-        super().__init__(lengths, dictionary +
+        super().__init__("hard-sym-ct", lengths, dictionary +
                          [query_symbol, separator_symbol] +
                          [str(i) for i in range(10)])
         assert query_symbol not in dictionary
@@ -328,7 +352,7 @@ class ElementaryLanguage(TokenTask):
         dictionary += ["I", "DO", "NOT", "AND", "BUT",
                        query_symbol,
                        sentence_term_symbol, "YES", "NO"]
-        super().__init__(0, dictionary)
+        super().__init__("qa", 0, dictionary)
 
     def generate_tasks(self, max_n_seq: int = 10 , **kwargs):
         tasks: TaskType = []

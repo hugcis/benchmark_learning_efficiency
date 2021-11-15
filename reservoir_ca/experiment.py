@@ -1,3 +1,4 @@
+import hashlib
 import json
 import dataclasses
 from dataclasses import dataclass, field
@@ -46,6 +47,7 @@ class ExpOptions:
     rules: list[int] = field(default_factory=lambda : list(range(256)))
     reg_type: RegType = RegType.LINEARSVM
     ignore_mask: bool = True
+    binarized_task: bool = True
 
     def to_json(self):
         dict_rep = dataclasses.asdict(self)
@@ -63,6 +65,11 @@ class ExpOptions:
             else:
                 setattr(opts, name, val)
         return opts
+
+    def hashed_repr(self) -> str:
+        hasher = hashlib.md5()
+        hasher.update(self.to_json().encode())
+        return hasher.hexdigest()[:8]
 
 def to_dim_one_hot(data, out_dim):
     return np.eye(out_dim)[data]
