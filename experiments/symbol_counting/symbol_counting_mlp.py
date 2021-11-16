@@ -3,4 +3,4 @@ from reservoir_ca.tasks import SymbolCounting
 from experiments.helpers import run_task
 
 if __name__ == "__main__":
-    run_task(SymbolCounting, [8], opts_extra={"reg_type": RegType.MLP})
+    run_task(SymbolCounting, [10], opts_extra={"reg_type": RegType.MLP})

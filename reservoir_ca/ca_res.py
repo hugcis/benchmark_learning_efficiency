@@ -11,6 +11,19 @@ class ProjectionType(Enum):
     def __str__(self):
         return '%s' % self.name
 
+
+def rule_array_from_int(ca_rule: int) -> np.ndarray:
+    """
+    Converts a rule id to an array corresponding to all ordered binary inputs.
+    Only works with ECA rule/ids.
+    """
+    rule_list = bin(ca_rule)[2:]
+    # Zero padding of the rule
+    rule_list = [0] * (8 - len(rule_list)) + [int(i) for i in rule_list]
+    # Convert to array and reverse the list
+    return np.array(rule_list[::-1])
+
+
 class CAReservoir:
     def __init__(self, ca_rule: int, inp_size: int, redundancy: int = 4,
                  r_height: int = 2, proj_factor: int = 40,
@@ -20,14 +33,10 @@ class CAReservoir:
         self.r_height = r_height
         self.proj_factor = proj_factor
         self.ca_rule = ca_rule
-
-        rule_list = bin(ca_rule)[2:]
-        # Zero padding of the rule
-        rule_list = [0] * (8 - len(rule_list)) + [int(i) for i in rule_list]
-        # Convert to array and reverse the list
-        self.rule_array = np.array(rule_list[::-1])
+        self.rule_array = rule_array_from_int(self.ca_rule)
 
         self.inp_size = inp_size
+        assert isinstance(proj_type, ProjectionType)
         self.proj_type = proj_type
         self.proj_pattern = proj_pattern
         self.proj_matrix = self.set_proj_matrix()
@@ -65,7 +74,7 @@ class CAReservoir:
                     proj_matrix[:, t * self.proj_factor:(t + 1) * self.proj_factor][idx_x, y] = 1
 
         else:
-            raise ValueError("Unrecognized projection type")
+            raise ValueError("Unrecognized projection type {}".format(repr(self.proj_type)))
 
         return proj_matrix
 

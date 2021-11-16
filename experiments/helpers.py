@@ -136,12 +136,13 @@ class Result:
         self.res = {}
 
 
-def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions]:
+def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions, List[int]]:
     parser = make_parser()
     args = parser.parse_args()
-    opts = ExpOptions(rules=[int(i) for i in args.rules])
+    opts = ExpOptions()
+    rules = [int(i) for i in args.rules]
     for p in vars(opts):
-        if p != "proj_type" and p != "reg_type" and p != "rules" and p in vars(args):
+        if p != "proj_type" and p != "reg_type" and p in vars(args):
             setattr(opts, p, vars(args)[p])
         elif p == "reg_type":
             opts.reg_type = RegType.from_str(args.reg_type)
@@ -176,7 +177,7 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions]
     random.seed(seed)
     np.random.seed(seed)
 
-    return res, opts
+    return res, opts, rules
 
 
 def run_task(task_cls: Type[Task], cls_args: List[Any],
@@ -186,13 +187,13 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
     if fname is None:
         fname = task.name + "#.pkl"
 
-    res, opts = init_exp(fname, opts_extra)
+    res, opts, rules = init_exp(fname, opts_extra)
     for _ in tqdm(range(opts.n_rep), miniters=10):
         ca = CAReservoir(0, task.output_dimension(),
                          r_height=opts.r_height,
                          proj_factor=opts.proj_factor)
         exp = Experiment(ca, task, opts)
-        for t in opts.rules:
+        for t in rules:
             ca = CAReservoir(t, task.output_dimension(),
                              redundancy=opts.redundancy,
                              r_height=opts.r_height,

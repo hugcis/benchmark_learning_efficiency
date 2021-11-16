@@ -3,7 +3,7 @@ import json
 import dataclasses
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Any, Tuple, Optional
+from typing import List, Any, Tuple, Optional
 
 import numpy as np
 from sklearn.svm import LinearSVC, SVC
@@ -37,6 +37,7 @@ class RegType(Enum):
 
 @dataclass
 class ExpOptions:
+    """ An option class that holds all of the experiment parameters. """
     seq_len: int = 100
     max_n_seq: int = 300
     n_rep: int = 10
@@ -44,14 +45,13 @@ class ExpOptions:
     redundancy: int = 4
     r_height: int = 2
     proj_factor: int = 40
-    rules: list[int] = field(default_factory=lambda : list(range(256)))
     reg_type: RegType = RegType.LINEARSVM
     ignore_mask: bool = True
     binarized_task: bool = False
     proj_type: ProjectionType = ProjectionType.ONE_TO_ONE
     proj_pattern: int = 4
 
-    def to_json(self, filter_out: Optional[List[str]] = ["rules", "seed"]):
+    def to_json(self, filter_out: Optional[List[str]] = ["seed"]):
         dict_rep = dataclasses.asdict(self)
         if filter_out is not None:
             for s in filter_out:
@@ -73,7 +73,7 @@ class ExpOptions:
 
     def hashed_repr(self) -> str:
         hasher = hashlib.md5()
-        hasher.update(self.to_json(filter_out=["rules"]).encode())
+        hasher.update(self.to_json().encode())
         return hasher.hexdigest()[:8]
 
 def to_dim_one_hot(data, out_dim):
