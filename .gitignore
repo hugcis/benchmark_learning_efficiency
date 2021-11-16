@@ -1,2 +1,3 @@
 experiment_results/*.pkl
+experiment_results/*.json
 notebooks

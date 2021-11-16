@@ -8,6 +8,8 @@ class ProjectionType(Enum):
     ONE_TO_MANY = 2
     ONE_TO_PATTERN = 3
 
+    def __str__(self):
+        return '%s' % self.name
 
 class CAReservoir:
     def __init__(self, ca_rule: int, inp_size: int, redundancy: int = 4,
