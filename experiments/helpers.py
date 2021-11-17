@@ -166,8 +166,9 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions,
     base = pathlib.Path().resolve()
 
     opts_path = base / "experiment_results" / pathlib.Path(json_opts)
-    with open(opts_path, "w") as f:
-        f.write(opts.to_json())
+    if not opts_path.exists():
+        with open(opts_path, "w") as f:
+            f.write(opts.to_json())
 
     name = name.replace("#", f"_{opts.hashed_repr()}")
     path = base / "experiment_results" / pathlib.Path(name)
@@ -183,6 +184,10 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions,
 def run_task(task_cls: Type[Task], cls_args: List[Any],
              opts_extra: Dict[str, Any] = {},
              fname: Optional[str] = None):
+    """
+    This function runs an experiment specified by its task, options and
+    optinal name for the output.
+    """
     task = task_cls(*cls_args)
     if fname is None:
         fname = task.name + "#.pkl"
