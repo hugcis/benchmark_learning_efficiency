@@ -6,4 +6,5 @@ from experiments.helpers import run_task
 if __name__ == "__main__":
     run_task(SymbolCounting, [10], opts_extra={"reg_type": RegType.RBFSVM,
                                                "ignore_mask": False,
-                                               "proj_type": ProjectionType.ONE_TO_PATTERN})
+                                               "proj_type": ProjectionType.ONE_TO_MANY,
+                                               "r_height": 3})
