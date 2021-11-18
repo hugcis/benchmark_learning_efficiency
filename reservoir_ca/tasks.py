@@ -218,11 +218,18 @@ class SymbolCounting(TokenTask):
         st = set()
         n_rand = max(max_n_seq // len(self.lengths), 1)
         for t in self.lengths:
-            for _ in range(n_rand + 2):
+            for _ in range(3 * n_rand):
                 current_task_mask = []
                 n_queries = np.random.randint(1, len(self.base_dic) + 1)
                 left = np.random.choice(self.base_dic, size=t, replace=True).tolist()
                 ct = collections.Counter(left)
+
+                # For now avoid the case with more than ten times the same symbol as it
+                # makes us choose between treating 10 and plus as separate tokens or
+                # as two single digit tokens
+                if any(c >= 10 for c in ct.values()):
+                    continue
+
                 tk = np.random.choice(self.base_dic, size=n_queries, replace=False)
                 for tc in tk:
                     left = left + [self.query_symbol, tc, str(ct[tc])]
