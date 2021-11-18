@@ -186,7 +186,7 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
              fname: Optional[str] = None):
     """
     This function runs an experiment specified by its task, options and
-    optinal name for the output.
+    optional name for the output.
     """
     task = task_cls(*cls_args)
     if fname is None:
