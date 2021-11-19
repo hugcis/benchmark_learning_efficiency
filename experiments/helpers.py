@@ -89,7 +89,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--results-file-name", type=str, default=None)
     parser.add_argument("--rules", nargs="+", default=list(range(256)))
     parser.add_argument("--seed", type=int, default=84923)
-    parser.add_argument("--reg-type", type=str, default="linearsvm",
+    parser.add_argument("--reg_type", type=str, default="linearsvm",
                         choices=["linearsvm", "rbfsvm", "linear", "rbf", "mlp",
                                  "randomforest"])
     parser.add_argument("--proj_type", type=str, default="one_to_one",
@@ -149,6 +149,7 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions,
         elif p == "proj_type":
             opts.proj_type = ProjectionType[args.proj_type.upper()]
 
+    # opts_extra overwrites the command line arguments
     for k, v in opts_extra.items():
         if not hasattr(opts, k):
             raise ValueError(f"Wrong option {k} passed to opts.")
