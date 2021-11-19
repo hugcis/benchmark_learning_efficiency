@@ -46,7 +46,7 @@ class ExpOptions:
     r_height: int = 2
     proj_factor: int = 40
     reg_type: RegType = RegType.LINEARSVM
-    ignore_mask: bool = True
+    ignore_mask: bool = False
     binarized_task: bool = False
     proj_type: ProjectionType = ProjectionType.ONE_TO_ONE
     proj_pattern: int = 4
