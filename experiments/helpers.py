@@ -86,6 +86,7 @@ def make_parser() -> argparse.ArgumentParser:
                             type=type(opts_dict[opt]))
 
     parser.add_argument("--return-name", default=False, action="store_true")
+    parser.add_argument("--increment-data", default=False, action="store_true")
     parser.add_argument("--results-file-name", type=str, default=None)
     parser.add_argument("--rules", nargs="+", default=list(range(256)))
     parser.add_argument("--seed", type=int, default=84923)
@@ -135,6 +136,14 @@ class Result:
         # Flush results
         self.res = {}
 
+    def read(self) -> Dict[int, List[float]]:
+        if self.path.exists():
+            with AtomicOpen(self.path, "rb") as f:
+                prev = pkl.loads(f.read())
+            return prev
+        else:
+            return {}
+
 
 def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions, List[int]]:
     parser = make_parser()
@@ -174,6 +183,13 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions,
     name = name.replace("#", f"_{opts.hashed_repr()}")
     path = base / "experiment_results" / pathlib.Path(name)
     res = Result(path)
+    if args.increment_data:
+        dic = res.read()
+        new_rules = [r for r in rules if len(dic.get(r, [])) < opts.n_rep]
+        skip = set(rules).difference(new_rules)
+        if len(skip):
+            print("Skipping rules {} for incremental".format(list(skip)))
+        rules = new_rules
 
     seed = opts.seed
     random.seed(seed)
