@@ -186,9 +186,9 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions,
     if args.increment_data:
         dic = res.read()
         new_rules = [r for r in rules if len(dic.get(r, [])) < opts.n_rep]
-        skip = set(rules).difference(new_rules)
-        if len(skip):
-            print("Skipping rules {} for incremental".format(list(skip)))
+        skip = list(set(rules).difference(new_rules))
+        if skip:
+            print("Skipping rules {} for incremental".format(skip))
         rules = new_rules
 
     seed = opts.seed
