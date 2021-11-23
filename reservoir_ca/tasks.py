@@ -6,6 +6,7 @@ import collections
 TaskType = List[List[str]]
 Mask = Optional[List[List[int]]]
 
+
 def choose_minimal_set(tasks: TaskType, max_n_seq: int,
                        mask: Mask = None) -> Tuple[TaskType, Mask]:
     if len(tasks) > max_n_seq:
@@ -53,6 +54,7 @@ class Task(ABC):
         else:
             self.lengths = lengths
 
+
 class HybridTask(Task):
     def __init__(self, named_tasks: Dict[str, Type[Task]],
                  task_args: Dict[str, List[Any]]):
@@ -90,6 +92,7 @@ class BinaryTask(Task):
         super().__init__(name)
         self.dictionary = ["0", "1"]
         self.set_lengths(lengths)
+
 
 class TokenTask(Task):
     def __init__(self, name: str, lengths: Union[int, Sequence[int]],
