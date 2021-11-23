@@ -6,13 +6,12 @@ from enum import Enum
 from typing import List, Any, Tuple, Optional
 
 import numpy as np
-from sklearn.svm import LinearSVC, SVC
-from sklearn.preprocessing import StandardScaler
-from sklearn.neural_network import MLPClassifier
-from sklearn.ensemble import RandomForestClassifier
 
 from reservoir_ca.tasks import BinarizedTask, Task, TokenTask
 from reservoir_ca.ca_res import CAReservoir, ProjectionType
+from reservoir_ca.decoders import (LinearSVC, SVC, StandardScaler,
+                                   MLPClassifier, RandomForestClassifier,
+                                   ConvClassifier)
 
 
 class RegType(Enum):
@@ -20,6 +19,7 @@ class RegType(Enum):
     RBFSVM = 2
     MLP = 3
     RANDOMFOREST = 4
+    CONV_MLP = 5
 
     @staticmethod
     def from_str(label: str) -> "RegType":
@@ -31,8 +31,13 @@ class RegType(Enum):
             return RegType.MLP
         elif label in ("randomforest"):
             return RegType.RANDOMFOREST
+        elif label in ("conv", "conv_mlp"):
+            return RegType.CONV_MLP
         else:
             raise NotImplementedError
+
+    def __str__(self):
+        return '%s' % self.name
 
 
 @dataclass
@@ -76,6 +81,7 @@ class ExpOptions:
         hasher.update(self.to_json().encode())
         return hasher.hexdigest()[:8]
 
+
 def to_dim_one_hot(data, out_dim):
     return np.eye(out_dim)[data]
 
@@ -107,6 +113,8 @@ class Experiment:
             self.reg = MLPClassifier(hidden_layer_sizes=(100, 200, 100))
         elif exp_options.reg_type == RegType.RANDOMFOREST:
             self.reg = RandomForestClassifier(n_estimators=100)
+        elif exp_options.reg_type == RegType.CONV_MLP:
+            self.reg = ConvClassifier((32, 16))
 
         if exp_options.binarized_task and isinstance(task, TokenTask):
             self.task = BinarizedTask(task)
@@ -114,8 +122,8 @@ class Experiment:
             raise ValueError("Task cannot be binarized")
         else:
             self.task = task
-        tasks, masks = task.generate_tasks(seq_len=exp_options.seq_len,
-                                           max_n_seq=exp_options.max_n_seq)
+        tasks, masks = self.task.generate_tasks(seq_len=exp_options.seq_len,
+                                                max_n_seq=exp_options.max_n_seq)
 
         self.dic = {d: n for n, d in enumerate(self.task.dictionary)}
 
