@@ -10,6 +10,7 @@ numpy = "^1.21.4"
 matplotlib = "^3.4.3"
 tqdm = "^4.62.3"
 sklearn = "^0.0"
+torch = "^1.10.0"
 
 [tool.poetry.dev-dependencies]
 matplotlib = "^3.4.3"
