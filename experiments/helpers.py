@@ -18,6 +18,7 @@ from reservoir_ca.ca_res import CAReservoir
 from reservoir_ca.tasks import Task
 from reservoir_ca.experiment import ExpOptions, Experiment, ProjectionType, RegType
 
+
 try:
     # Posix based file locking (Linux, Ubuntu, MacOS, etc.)
     #   Only allows locking on writable files, might cause
@@ -40,10 +41,13 @@ except ModuleNotFoundError:
 
 # Class for ensuring that all file operations are atomic, treat
 # initialization like a standard call to 'open' that happens to be atomic.
-# This file opener *must* be used in a "with" block.
 class AtomicOpen:
-    # Open the file with arguments provided by user. Then acquire
-    # a lock on that file object (WARNING: Advisory locking).
+    """
+    Open the file with arguments provided by user. Then acquire
+    a lock on that file object (WARNING: Advisory locking).
+
+    This file opener *must* be used in a "with" block.
+    """
     def __init__(self, path, desc: str, *args, **kwargs):
         # Open the file and acquire a lock on the file before operating
         self.file = open(path, desc, *args, **kwargs)
@@ -92,7 +96,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=84923)
     parser.add_argument("--reg_type", type=str, default="linearsvm",
                         choices=["linearsvm", "rbfsvm", "linear", "rbf", "mlp",
-                                 "randomforest"])
+                                 "randomforest", "conv", "conv_mlp"])
     parser.add_argument("--proj_type", type=str, default="one_to_one",
                         choices=["one_to_one", "one_to_many", "one_to_pattern"])
     return parser
@@ -117,11 +121,16 @@ class Result:
         self.res = {}
 
     def update(self, rule: int, result: float):
+        """
+        Update the temporary dictionary with a new datapoint `result` for rule `rule`.
+        To make these new points persist one must save them with the `save` method.
+        """
         if rule not in self.res:
             self.res[rule] = []
         self.res[rule].append(result)
 
     def save(self):
+        """ Flush the current results to disk. """
         if self.path.exists():
             with AtomicOpen(self.path, "rb+") as f:
                 prev = pkl.loads(f.read())
@@ -137,6 +146,10 @@ class Result:
         self.res = {}
 
     def read(self) -> Dict[int, List[float]]:
+        """
+        Reads and returns the current state of the results dictionary. This will not change or
+        flush the current results to disk.
+        """
         if self.path.exists():
             with AtomicOpen(self.path, "rb") as f:
                 prev = pkl.loads(f.read())
@@ -146,6 +159,11 @@ class Result:
 
 
 def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions, List[int]]:
+    """
+    Initialize an experiment. This will read the command line arguments as well as the
+    optional extra options and return a Result object, the experiment options as well as
+    the list of rules to be processed.
+    """
     parser = make_parser()
     args = parser.parse_args()
     opts = ExpOptions()
@@ -210,19 +228,20 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
         fname = task.name + "#.pkl"
 
     res, opts, rules = init_exp(fname, opts_extra)
-    for _ in tqdm(range(opts.n_rep), miniters=10):
-        ca = CAReservoir(0, task.output_dimension(),
-                         r_height=opts.r_height,
-                         proj_factor=opts.proj_factor)
-        exp = Experiment(ca, task, opts)
-        for t in rules:
-            ca = CAReservoir(t, task.output_dimension(),
-                             redundancy=opts.redundancy,
+    if rules:
+        for _ in tqdm(range(opts.n_rep), miniters=10):
+            ca = CAReservoir(0, task.output_dimension(),
                              r_height=opts.r_height,
-                             proj_factor=opts.proj_factor,
-                             proj_type=opts.proj_type,
-                             proj_pattern=opts.proj_pattern)
-            exp.ca = ca
-            exp.fit()
-            res.update(t, exp.eval_test())
-    res.save()
+                             proj_factor=opts.proj_factor)
+            exp = Experiment(ca, task, opts)
+            for t in rules:
+                ca = CAReservoir(t, exp.task.output_dimension(),
+                                 redundancy=opts.redundancy,
+                                 r_height=opts.r_height,
+                                 proj_factor=opts.proj_factor,
+                                 proj_type=opts.proj_type,
+                                 proj_pattern=opts.proj_pattern)
+                exp.ca = ca
+                exp.fit()
+                res.update(t, exp.eval_test())
+        res.save()
