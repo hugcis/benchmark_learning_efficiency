@@ -58,6 +58,7 @@ class ConvNetwork(nn.Module):
         else:
             return nn.functional.max_pool1d(X, kernel_size=X.shape[-1])
 
+
 class OptType(Enum):
     LBGFS = 1
     SGD = 2
@@ -68,7 +69,7 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
     conv_network: Optional[ConvNetwork]
 
     def __init__(self, channels: Sequence[int], verbose: bool = False,
-                 opt_type: OptType = OptType.LBGFS):
+                 opt_type: OptType = OptType.ADAM):
         self.conv_network = None
         self.channels = list(channels)
         self.verbose = verbose
