@@ -4,6 +4,7 @@ import dataclasses
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Any, Tuple, Optional
+from abc import ABC
 
 import numpy as np
 
@@ -100,11 +101,47 @@ def group_by_lens(
     return grouped_seqs, grouped_masks if masks is not None else None
 
 
+class Preprocessor(ABC):
+    pass
+
+
+class ConvPreprocessor(Preprocessor):
+    def __init__(self, r_height: int, state_size: int):
+        self.r_height = r_height
+        self.state_size = state_size
+
+    def reshape_vec(self, X: List[np.ndarray]):
+        return [v.reshape(-1, self.r_height, self.state_size) for v in X]
+
+    def fit(self, X):
+        return np.concatenate(self.reshape_vec(X), axis=0)
+
+    def transform(self, X):
+        return np.concatenate(self.reshape_vec(X), axis=0)
+
+    def fit_transform(self, X):
+        return np.concatenate(self.reshape_vec(X), axis=0)
+
+
+class ScalePreprocessor(Preprocessor):
+    def __init__(self, output_size):
+        self.output_size = output_size
+        self.scaler = StandardScaler()
+
+    def fit(self, X):
+        return self.scaler.fit(np.concatenate(X, axis=1).reshape(-1, self.output_size))
+
+    def transform(self, X):
+        return self.scaler.transform(np.concatenate(X, axis=1).reshape(-1, self.output_size))
+
+    def fit_transform(self, X):
+        return self.scaler.fit_transform(np.concatenate(X, axis=1).reshape(-1, self.output_size))
+
+
 class Experiment:
     def __init__(self, ca: CAReservoir, task: Task, exp_options: ExpOptions = ExpOptions()):
         self.opts = exp_options
         self.ca = ca
-        self.scaler = StandardScaler()
         if exp_options.reg_type == RegType.LINEARSVM:
             self.reg = LinearSVC(dual=False, C=1.)
         elif exp_options.reg_type == RegType.RBFSVM:
@@ -115,6 +152,11 @@ class Experiment:
             self.reg = RandomForestClassifier(n_estimators=100)
         elif exp_options.reg_type == RegType.CONV_MLP:
             self.reg = ConvClassifier((32, 16))
+
+        if exp_options.reg_type == RegType.CONV_MLP:
+            self.preproc = ConvPreprocessor(self.opts.r_height, self.ca.state_size)
+        else:
+            self.preproc = ScalePreprocessor(self.ca.output_size)
 
         if exp_options.binarized_task and isinstance(task, TokenTask):
             self.task = BinarizedTask(task)
@@ -149,8 +191,10 @@ class Experiment:
     def output_dim(self) -> int:
         return self.task.output_dimension()
 
-    def process_tasks(self, tasks: List[np.ndarray],
-                      masks: Optional[List[List[int]]] = None) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def process_tasks(
+            self, tasks: List[np.ndarray],
+            masks: Optional[List[List[int]]] = None
+    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         all_data = []
         all_tgts = []
         for l_idx, task_l in enumerate(tasks):
@@ -174,7 +218,7 @@ class Experiment:
                 single_length_tgts = np.concatenate(single_length_tgts, axis=0)
             # print(single_length_data, single_length_tgts)
 
-            all_data.append(np.concatenate(single_length_data, axis=1).reshape(-1, self.ca.output_size))
+            all_data.append(np.concatenate(single_length_data, axis=1))
             all_tgts.append(single_length_tgts)
         return all_data, all_tgts
 
@@ -194,12 +238,12 @@ class Experiment:
             return inp, tgts
         else:
             # Flatten inp and targets for training of SVM
-            self.reg.fit(self.scaler.fit_transform(np.concatenate(all_data, axis=0)),
+            self.reg.fit(self.preproc.fit_transform(all_data),
                          np.concatenate(all_tgts, axis=0))
             return None
 
     def eval_test(self) -> float:
         all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
 
-        return self.reg.score(self.scaler.transform(np.concatenate(all_data, axis=0)),
+        return self.reg.score(self.preproc.transform(all_data),
                               np.concatenate(all_tgts, axis=0))

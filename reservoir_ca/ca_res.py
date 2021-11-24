@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
+
 
 class ProjectionType(Enum):
     ONE_TO_ONE = 1
@@ -41,7 +42,9 @@ class CAReservoir:
         self.proj_pattern = proj_pattern
         self.proj_matrix = self.set_proj_matrix()
 
-    def set_proj_matrix(self):
+        self.input_function = np.logical_xor
+
+    def set_proj_matrix(self) -> np.ndarray:
         proj_matrix = np.zeros((self.inp_size, self.state_size))
         if self.proj_type == ProjectionType.ONE_TO_ONE:
             for t in range(self.redundancy):
@@ -64,6 +67,7 @@ class CAReservoir:
                     ] = pat[idx_x[n]]
 
         elif self.proj_type == ProjectionType.ONE_TO_MANY:
+
             if self.proj_pattern is None:
                 raise ValueError("Parameter proj_pattern must be set for this projection type")
             for t in range(self.redundancy):
@@ -79,25 +83,28 @@ class CAReservoir:
         return proj_matrix
 
     @property
-    def state_size(self):
+    def state_size(self) -> int:
         return self.proj_factor * self.redundancy
 
     @property
-    def output_size(self):
+    def output_size(self) -> int:
         return self.state_size * self.r_height
 
-    def apply_rule(self, state):
+    def apply_rule(self, state: np.ndarray):
         return self.rule_array[
             np.roll(state, -1, axis=1) + 2 * state +
             4 * np.roll(state, 1, axis=1)]
 
-    def __call__(self, state, inp):
+    def __call__(self, state: np.ndarray, inp: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         assert state.shape[1] == self.state_size
         assert inp.shape[1] == self.inp_size
         projected_inp = inp @ self.proj_matrix
-        xored_state = np.logical_xor(projected_inp, state)
+
+        # The input is encoded into the current state via the input function
+        mod_state = self.input_function(projected_inp, state)
         output = np.zeros((inp.shape[0], self.r_height, self.state_size))
+        # We apply r_height steps of the CA
         for i in range(self.r_height):
-            xored_state = self.apply_rule(xored_state)
-            output[:, i, :] = xored_state
-        return output, xored_state
+            mod_state = self.apply_rule(mod_state)
+            output[:, i, :] = mod_state
+        return output, mod_state

@@ -26,7 +26,8 @@ class ExperimentData(torch.utils.data.Dataset):
 
 
 class ConvNetwork(nn.Module):
-    def __init__(self, channels: Sequence[int], out_dim: int,
+    def __init__(self, channels: Sequence[int], inp_dim: int,
+                 out_dim: int,
                  kernel_sizes: Optional[Sequence[int]] = None,
                  avg_pool: bool = True) -> None:
         super().__init__()
@@ -42,7 +43,7 @@ class ConvNetwork(nn.Module):
         convs = []
         self.channels = channels
         self.out_dim = out_dim
-        self.conv_first = nn.Conv1d(1, channels[0], kernel_sizes[0])
+        self.conv_first = nn.Conv1d(inp_dim, channels[0], kernel_sizes[0])
         for i in range(len(channels) - 1):
             convs.append(nn.Conv1d(channels[i], channels[i + 1], kernel_sizes[i + 1]))
         self.convs = nn.ModuleList(convs)
@@ -76,7 +77,7 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
         self.opt_type = opt_type
 
     def fit(self, X, y, batch_size: Optional[int] = None, epochs: int = 10) -> "ConvClassifier":
-        X, y = check_X_y(X, y)
+        # X, y = check_X_y(X, y)
 
         # Check classes
         self.classes_ = unique_labels(y)
@@ -85,7 +86,7 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
             self.inverse_classes_[c] = i
 
         # Create network, optimizer and loss
-        self.conv_network = ConvNetwork(self.channels, len(self.classes_))
+        self.conv_network = ConvNetwork(self.channels, X.shape[1], len(self.classes_))
         self.conv_network.train()
         if self.opt_type == OptType.LBGFS:
             optimizer = torch.optim.LBFGS(self.conv_network.parameters())
@@ -117,7 +118,7 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
             def closure():
                 if torch.is_grad_enabled():
                     optimizer.zero_grad()
-                out = self.conv_network.forward(inp.float()[:, None, :])[:, :, 0]
+                out = self.conv_network.forward(inp.float())[:, :, 0]
                 err = loss_fn(out, target)
                 if err.requires_grad:
                     err.backward()
@@ -134,6 +135,6 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
         self.conv_network.eval()
         check_is_fitted(self)
 
-        X = check_array(X)
-        out = self.conv_network.forward(torch.Tensor(X)[:, None, :])[:, :, 0]
+        # X = check_array(X)
+        out = self.conv_network.forward(torch.Tensor(X))[:, :, 0]
         return self.classes_[out.argmax(1).detach().numpy()]

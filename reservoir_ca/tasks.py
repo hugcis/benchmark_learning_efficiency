@@ -343,6 +343,16 @@ def make_sentence(yes_names, no_names, verb, link_words=["AND", "BUT"]):
     return base
 
 
+def make_adj_sentences(size_adj, color_adj, obj_names):
+    output = [[i] for i in np.random.permutation(obj_names)]
+    for item in output:
+        if np.random.random() > .4:
+            item.insert(0, np.random.choice(color_adj))
+        if np.random.random() > .4:
+            item.insert(0, np.random.choice(size_adj))
+    return output
+
+
 class ElementaryLanguage(TokenTask):
     def __init__(self,
                  object_names: List[str] = ["PETER", "JOHN", "TOM",
@@ -359,6 +369,70 @@ class ElementaryLanguage(TokenTask):
         self.query_symbol = query_symbol
         self.separator_symbol = separator_symbol
         dictionary = object_names + verbs #+ color_adj
+        dictionary += ["I", "DO", "NOT", "AND", "BUT",
+                       query_symbol,
+                       sentence_term_symbol, "YES", "NO"]
+        super().__init__("qa", 0, dictionary)
+
+    def generate_tasks(self, max_n_seq: int = 10 , **kwargs):
+        tasks: TaskType = []
+        mask: Mask = []
+        st = set()
+        for _ in range(max_n_seq):
+            current_mask = []
+            verb = np.random.choice(self.verbs)
+
+            # Choose a subset of object names to work with
+            subset_size = np.random.randint(1, len(self.object_names))
+            subset = np.random.choice(self.object_names, size=subset_size,
+                                      replace=False)
+
+            # Decide the yes names and the no names (may be empty)
+            yes = np.random.randint(len(subset))
+            yes_names = np.random.choice(subset, size=yes,
+                                         replace=False).tolist()
+            if yes_names:
+                yes_names = " AND ".join(yes_names).split(" ")
+            no_names = [i for i in subset if i not in yes_names]
+            if no_names:
+                no_names = " AND ".join(no_names).split(" ")
+
+            # Build the sentence
+            task = make_sentence(yes_names, no_names, verb)
+            tgt = np.random.choice(subset)
+            # Make the answer
+            task += ([self.sentence_term_symbol] +
+                     ["DO", "I", verb, tgt, self.query_symbol] +
+                     ["YES" if tgt in yes_names else "NO"])
+            current_mask.append(len(task) - 1)
+            task_str = self.separator_symbol.join(task)
+            if task_str not in st:
+                tasks.append(task)
+                mask.append(current_mask)
+                st.add(task_str)
+        return choose_minimal_set(tasks, max_n_seq, mask=mask)
+
+
+
+class AdjectiveLanguage(TokenTask):
+    def __init__(self,
+                 object_names: List[str] = ["BANANA", "APPLE", "PEAR",
+                                            "PEACH", "APRICOT",
+                                            "CAR", "PLANE", "TRAIN"],
+                 separator_symbol: str = " ",
+                 sentence_term_symbol: str = ".",
+                 verbs: List[str] = ["SEE", "HEAR"],
+                 color_adj: List[str] = ["RED", "GREEN", "BLUE"],
+                 size_adj: List[str] = ["SMALL", "BIG"],
+                 query_symbol: str = "?"):
+        self.object_names = object_names
+        self.color_adj = color_adj
+        self.size_adj = size_adj
+        self.verbs = verbs
+        self.sentence_term_symbol = sentence_term_symbol
+        self.query_symbol = query_symbol
+        self.separator_symbol = separator_symbol
+        dictionary = object_names + verbs + color_adj + size_adj
         dictionary += ["I", "DO", "NOT", "AND", "BUT",
                        query_symbol,
                        sentence_term_symbol, "YES", "NO"]
