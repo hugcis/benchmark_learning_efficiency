@@ -231,8 +231,11 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
     if rules:
         for _ in tqdm(range(opts.n_rep), miniters=10):
             ca = CAReservoir(0, task.output_dimension(),
-                             r_height=opts.r_height,
-                             proj_factor=opts.proj_factor)
+                                redundancy=opts.redundancy,
+                                r_height=opts.r_height,
+                                proj_factor=opts.proj_factor,
+                                proj_type=opts.proj_type,
+                                proj_pattern=opts.proj_pattern)
             exp = Experiment(ca, task, opts)
             for t in rules:
                 ca = CAReservoir(t, exp.task.output_dimension(),
