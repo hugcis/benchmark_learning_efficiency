@@ -103,7 +103,7 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
                 # All dataset at once for LBGFS
                 batch_size = len(data)
             else:
-                batch_size = 16
+                batch_size = min(200, len(data))
         data_loader = torch.utils.data.DataLoader(data, batch_size=batch_size)
 
         # Train
