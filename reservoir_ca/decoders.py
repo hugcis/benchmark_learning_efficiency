@@ -4,12 +4,13 @@ from typing import Optional, Sequence
 import numpy as np
 import torch
 import torch.nn as nn
+from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC, SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.base import BaseEstimator, ClassifierMixin
-from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
+from sklearn.utils.validation import check_is_fitted
 from sklearn.utils.multiclass import unique_labels
 
 
@@ -77,8 +78,6 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
         self.opt_type = opt_type
 
     def fit(self, X, y, batch_size: Optional[int] = None, epochs: int = 10) -> "ConvClassifier":
-        # X, y = check_X_y(X, y)
-
         # Check classes
         self.classes_ = unique_labels(y)
         self.inverse_classes_ = np.zeros(self.classes_.max() + 1, dtype=np.int)
@@ -118,7 +117,10 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
             def closure():
                 if torch.is_grad_enabled():
                     optimizer.zero_grad()
-                out = self.conv_network.forward(inp.float())[:, :, 0]
+                if self.conv_network is not None:
+                    out = self.conv_network.forward(inp.float())[:, :, 0]
+                else:
+                    raise ValueError("Uninitialized network")
                 err = loss_fn(out, target)
                 if err.requires_grad:
                     err.backward()
@@ -132,7 +134,10 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
             print(f"Epoch {ep}, error is {running_err / ct}")
 
     def predict(self, X):
-        self.conv_network.eval()
+        if self.conv_network is not None:
+            self.conv_network.eval()
+        else:
+            raise ValueError("Uninitialized network")
         check_is_fitted(self)
 
         # X = check_array(X)

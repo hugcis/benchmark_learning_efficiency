@@ -10,13 +10,13 @@ class ProjectionType(Enum):
     ONE_TO_PATTERN = 3
 
     def __str__(self):
-        return '%s' % self.name
+        return f"{self.name}"
 
 
 def rule_array_from_int(ca_rule: int) -> np.ndarray:
     """
     Converts a rule id to an array corresponding to all ordered binary inputs.
-    Only works with ECA rule/ids.
+    Only works with ECA rule/ids (ie 2 states, neighborhood size 1).
     """
     rule_list = bin(ca_rule)[2:]
     # Zero padding of the rule
@@ -25,15 +25,29 @@ def rule_array_from_int(ca_rule: int) -> np.ndarray:
     return np.array(rule_list[::-1])
 
 
+def validate_rule(rule: int, n_size: int, n_states: int):
+    neigh_size = 2 * n_size + 1
+    n_possible_neigh = n_states ** neigh_size
+    n_possible_rules = n_states ** n_possible_neigh
+    return rule < n_possible_rules
+
+
 class CAReservoir:
     def __init__(self, ca_rule: int, inp_size: int, redundancy: int = 4,
                  r_height: int = 2, proj_factor: int = 40,
                  proj_type: ProjectionType = ProjectionType.ONE_TO_ONE,
-                 proj_pattern: Optional[int] = None):
+                 proj_pattern: Optional[int] = None, n_size: int = 1):
         self.redundancy = redundancy
         self.r_height = r_height
         self.proj_factor = proj_factor
         self.ca_rule = ca_rule
+        self.n_size = n_size
+        # We only support rules with neighborhood sizes 1 or 2
+        assert self.n_size == 1 or self.n_size == 2
+        if not validate_rule(self.ca_rule, self.n_size, 2):
+            raise ValueError(f"Rule {self.ca_rule} incompatible with 2 states and "
+                             f"neighborhood size {self.n_size}")
+
         self.rule_array = rule_array_from_int(self.ca_rule)
 
         self.inp_size = inp_size
@@ -44,15 +58,16 @@ class CAReservoir:
 
         self.input_function = np.logical_xor
 
+
     def set_proj_matrix(self) -> np.ndarray:
         proj_matrix = np.zeros((self.inp_size, self.state_size))
-        if self.proj_type == ProjectionType.ONE_TO_ONE:
+        if self.proj_type is ProjectionType.ONE_TO_ONE:
             for t in range(self.redundancy):
                 idx_x = np.random.permutation(self.inp_size)
                 idx_y = np.random.choice(self.proj_factor, size=self.inp_size)
                 proj_matrix[:, t * self.proj_factor:(t + 1) * self.proj_factor][idx_x, idx_y] = 1
 
-        elif self.proj_type == ProjectionType.ONE_TO_PATTERN:
+        elif self.proj_type is ProjectionType.ONE_TO_PATTERN:
             if self.proj_pattern is None:
                 raise ValueError("Parameter proj_pattern must be set for this projection type")
             for t in range(self.redundancy):
@@ -66,8 +81,7 @@ class CAReservoir:
                         idx_x[n], y:y + self.proj_pattern
                     ] = pat[idx_x[n]]
 
-        elif self.proj_type == ProjectionType.ONE_TO_MANY:
-
+        elif self.proj_type is ProjectionType.ONE_TO_MANY:
             if self.proj_pattern is None:
                 raise ValueError("Parameter proj_pattern must be set for this projection type")
             for t in range(self.redundancy):
@@ -78,7 +92,7 @@ class CAReservoir:
                     proj_matrix[:, t * self.proj_factor:(t + 1) * self.proj_factor][idx_x, y] = 1
 
         else:
-            raise ValueError("Unrecognized projection type {}".format(repr(self.proj_type)))
+            raise ValueError("Unrecognized projection type {}".format(self.proj_type))
 
         return proj_matrix
 

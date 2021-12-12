@@ -19,6 +19,8 @@ from reservoir_ca.tasks import Task
 from reservoir_ca.experiment import ExpOptions, Experiment, ProjectionType, RegType
 
 
+# This is a very hack-it-yourself way to implement file locking in Python. I
+# would prefer a proper library
 try:
     # Posix based file locking (Linux, Ubuntu, MacOS, etc.)
     #   Only allows locking on writable files, might cause
@@ -96,7 +98,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=84923)
     parser.add_argument("--reg_type", type=str, default="linearsvm",
                         choices=["linearsvm", "rbfsvm", "linear", "rbf", "mlp",
-                                 "randomforest", "conv", "conv_mlp"])
+                                 "randomforest", "conv", "conv_mlp", "logistic"])
     parser.add_argument("--proj_type", type=str, default="one_to_one",
                         choices=["one_to_one", "one_to_many", "one_to_pattern"])
     return parser
@@ -116,8 +118,11 @@ class Result:
     """
     res: Dict[int, list[float]]
 
-    def __init__(self, path: pathlib.Path):
+    def __init__(self, path: pathlib.Path, opts_path: pathlib.Path,
+                 counts_path: pathlib.Path):
         self.path = path
+        self.opts_path = opts_path
+        self.counts_path = counts_path
         self.res = {}
 
     def update(self, rule: int, result: float):
@@ -131,27 +136,47 @@ class Result:
 
     def save(self):
         """ Flush the current results to disk. """
-        if self.path.exists():
-            with AtomicOpen(self.path, "rb+") as f:
-                prev = pkl.loads(f.read())
-                for r in self.res:
-                    prev[r] = prev.get(r, []) + self.res[r]
-                f.seek(0)
-                f.write(pkl.dumps(prev))
-                f.truncate()
-        else:
-            with AtomicOpen(self.path, "wb") as f:
-                pkl.dump(self.res, f)
+        added_values = {}
+        for r in self.res:
+            added_values[r] = added_values.get(r, 0) + len(self.res[r])
+        if not self.counts_path.exists():
+            pkl.dump({}, open(self.counts_path, "wb"))
+
+        with AtomicOpen(self.counts_path, "rb+") as f_counts:
+            counts_content = f_counts.read()
+            if counts_content:
+                ct = pkl.loads(counts_content)
+            else:
+                ct = {}
+            for r in added_values:
+                ct[r] = ct.get(r, 0) + added_values[r]
+            f_counts.seek(0)
+            f_counts.write(pkl.dumps(ct))
+            f_counts.truncate()
+
+            if self.path.exists():
+                with AtomicOpen(self.path, "rb+") as f:
+                    prev = pkl.loads(f.read())
+                    for r in self.res:
+                        prev[r] = prev.get(r, []) + self.res[r]
+                    f.seek(0)
+                    f.write(pkl.dumps(prev))
+                    f.truncate()
+            else:
+                with AtomicOpen(self.path, "wb") as f:
+                    pkl.dump(self.res, f)
+
         # Flush results
         self.res = {}
 
-    def read(self) -> Dict[int, List[float]]:
+
+    def read(self) -> Dict[int, int]:
         """
         Reads and returns the current state of the results dictionary. This will not change or
         flush the current results to disk.
         """
-        if self.path.exists():
-            with AtomicOpen(self.path, "rb") as f:
+        if self.counts_path.exists():
+            with AtomicOpen(self.counts_path, "rb") as f:
                 prev = pkl.loads(f.read())
             return prev
         else:
@@ -198,12 +223,19 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions,
         with open(opts_path, "w") as f:
             f.write(opts.to_json())
 
-    name = name.replace("#", f"_{opts.hashed_repr()}")
-    path = base / "experiment_results" / pathlib.Path(name)
-    res = Result(path)
+    res_fname = name.replace("#", f"_{opts.hashed_repr()}")
+    path = base / "experiment_results" / pathlib.Path(res_fname)
+
+    count_fname = name.replace("#", f"_count_{opts.hashed_repr()}")
+    counts_path = base / "experiment_results" / pathlib.Path(count_fname)
+
+    res = Result(path, opts_path, counts_path)
+
+    # We skip if some of the rules we are processing already have the desired number of
+    # experimental results.
     if args.increment_data:
         dic = res.read()
-        new_rules = [r for r in rules if len(dic.get(r, [])) < opts.n_rep]
+        new_rules = [r for r in rules if dic.get(r, 0) < opts.n_rep]
         skip = list(set(rules).difference(new_rules))
         if skip:
             print("Skipping rules {} for incremental".format(skip))
