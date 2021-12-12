@@ -1,7 +1,7 @@
 import hashlib
 import json
 import dataclasses
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import List, Any, Tuple, Optional
 from abc import ABC
@@ -12,7 +12,7 @@ from reservoir_ca.tasks import BinarizedTask, Task, TokenTask
 from reservoir_ca.ca_res import CAReservoir, ProjectionType
 from reservoir_ca.decoders import (LinearSVC, SVC, StandardScaler,
                                    MLPClassifier, RandomForestClassifier,
-                                   ConvClassifier)
+                                   ConvClassifier, LogisticRegression)
 
 
 class RegType(Enum):
@@ -21,6 +21,7 @@ class RegType(Enum):
     MLP = 3
     RANDOMFOREST = 4
     CONV_MLP = 5
+    LOGISTICREG = 6
 
     @staticmethod
     def from_str(label: str) -> "RegType":
@@ -34,6 +35,8 @@ class RegType(Enum):
             return RegType.RANDOMFOREST
         elif label in ("conv", "conv_mlp"):
             return RegType.CONV_MLP
+        elif label in ("logistic", "logistic_reg"):
+            return RegType.LOGISTICREG
         else:
             raise NotImplementedError
 
@@ -143,7 +146,7 @@ class Experiment:
         self.opts = exp_options
         self.ca = ca
         if exp_options.reg_type == RegType.LINEARSVM:
-            self.reg = LinearSVC(dual=False, C=1.)
+            self.reg = LinearSVC(dual=False, C=1., max_iter=100)
         elif exp_options.reg_type == RegType.RBFSVM:
             self.reg = SVC(kernel="rbf", C=1.)
         elif exp_options.reg_type == RegType.MLP:
@@ -152,6 +155,8 @@ class Experiment:
             self.reg = RandomForestClassifier(n_estimators=100)
         elif exp_options.reg_type == RegType.CONV_MLP:
             self.reg = ConvClassifier((32, 16))
+        elif exp_options.reg_type == RegType.LOGISTICREG:
+            self.reg = LogisticRegression(C=1.0, solver="liblinear")
 
         if exp_options.reg_type == RegType.CONV_MLP:
             self.preproc = ConvPreprocessor(self.opts.r_height, self.ca.state_size)

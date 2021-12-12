@@ -309,13 +309,15 @@ class HardSymbolCounting(TokenTask):
 
 
 def add_no(no_names, verb):
-        if no_names:
-            return ["I", "DO", "NOT", verb] + no_names
-        else:
-            return []
+    """ Helper function for the QA tasks. """
+    if no_names:
+        return ["I", "DO", "NOT", verb] + no_names
+    else:
+        return []
 
 
 def add_yes(yes_names, verb):
+    """ Helper function for the QA tasks. """
     if yes_names:
         return ["I", verb] + yes_names
     else:
