@@ -4,12 +4,12 @@ import dataclasses
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Any, Tuple, Optional
-from abc import ABC
+from abc import ABC, abstractmethod
 
 import numpy as np
 
 from reservoir_ca.tasks import BinarizedTask, Task, TokenTask
-from reservoir_ca.ca_res import CAReservoir, ProjectionType
+from reservoir_ca.ca_res import CAReservoir, CARuleType, ProjectionType
 from reservoir_ca.decoders import (LinearSVC, SVC, StandardScaler,
                                    MLPClassifier, RandomForestClassifier,
                                    ConvClassifier, LogisticRegression)
@@ -59,6 +59,7 @@ class ExpOptions:
     binarized_task: bool = False
     proj_type: ProjectionType = ProjectionType.ONE_TO_ONE
     proj_pattern: int = 4
+    ca_rule_type: CARuleType = CARuleType.STANDARD
 
     def to_json(self, filter_out: Optional[List[str]] = ["seed"]):
         dict_rep = dataclasses.asdict(self)
@@ -105,8 +106,13 @@ def group_by_lens(
 
 
 class Preprocessor(ABC):
-    pass
+    @abstractmethod
+    def fit_transform(self, X):
+        del X
 
+    @abstractmethod
+    def transform(self, X):
+        del X
 
 class ConvPreprocessor(Preprocessor):
     def __init__(self, r_height: int, state_size: int):
@@ -142,9 +148,13 @@ class ScalePreprocessor(Preprocessor):
 
 
 class Experiment:
-    def __init__(self, ca: CAReservoir, task: Task, exp_options: ExpOptions = ExpOptions()):
+    ca: Optional[CAReservoir] = None
+
+    def __init__(self, task: Task, exp_options: ExpOptions = ExpOptions(),
+                 ca: Optional[CAReservoir] = None):
         self.opts = exp_options
-        self.ca = ca
+        if ca is not None:
+            self.set_ca(ca)
         if exp_options.reg_type == RegType.LINEARSVM:
             self.reg = LinearSVC(dual=False, C=1., max_iter=100)
         elif exp_options.reg_type == RegType.RBFSVM:
@@ -158,10 +168,7 @@ class Experiment:
         elif exp_options.reg_type == RegType.LOGISTICREG:
             self.reg = LogisticRegression(C=1.0, solver="liblinear")
 
-        if exp_options.reg_type == RegType.CONV_MLP:
-            self.preproc = ConvPreprocessor(self.opts.r_height, self.ca.state_size)
-        else:
-            self.preproc = ScalePreprocessor(self.ca.output_size)
+        self.preproc = None
 
         if exp_options.binarized_task and isinstance(task, TokenTask):
             self.task = BinarizedTask(task)
@@ -196,19 +203,39 @@ class Experiment:
     def output_dim(self) -> int:
         return self.task.output_dimension()
 
+    def set_ca(self, ca: CAReservoir):
+        if self.ca is not None:
+            current_size = self.ca.state_size
+        else:
+            current_size = None
+        self.ca = ca
+        if current_size is None or self.ca.state_size != current_size:
+            if self.opts.reg_type == RegType.CONV_MLP:
+                self.preproc = ConvPreprocessor(self.opts.r_height,
+                                                self.ca.state_size)
+            else:
+                self.preproc = ScalePreprocessor(self.ca.output_size)
+
+    def check_ca(self) -> Tuple[CAReservoir, Preprocessor]:
+        if self.ca is None or self.preproc is None:
+            raise ValueError("Must initialize ca with method `set_ca`")
+        else:
+            return self.ca, self.preproc
+
     def process_tasks(
             self, tasks: List[np.ndarray],
             masks: Optional[List[List[int]]] = None
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        ca, _ = self.check_ca()
         all_data = []
         all_tgts = []
         for l_idx, task_l in enumerate(tasks):
             single_length_data = []
             single_length_tgts = []
-            state = np.zeros((task_l.shape[0], self.ca.state_size))
+            state = np.zeros((task_l.shape[0], ca.state_size), dtype=int)
             for t in range(task_l.shape[1] - 1):
                 inp = to_dim_one_hot(task_l[:, t], self.output_dim)
-                output, state = self.ca(state, inp)
+                output, state = ca(state, inp)
                 if masks is not None:
                     for q in range(output.shape[0]):
                         if t + 1 in masks[l_idx][q]:
@@ -233,22 +260,24 @@ class Experiment:
         you set `return_data=True`, the model won't be fitted and the function will return
         the training dataset processed by the CA reservoir as well as the targets.
         """
+        ca, preproc = self.check_ca()
         all_data, all_tgts = self.process_tasks(self.training_tasks, self.training_masks)
 
         if return_data:
-            inp = [all_data[c].reshape(len(task_l), -1, self.ca.state_size)
+            inp = [all_data[c].reshape(len(task_l), -1, ca.state_size)
                    for c, task_l in enumerate(self.training_tasks)]
             tgts = [all_tgts[c].reshape(len(task_l), -1)
                    for c, task_l in enumerate(self.training_tasks)]
             return inp, tgts
         else:
             # Flatten inp and targets for training of SVM
-            self.reg.fit(self.preproc.fit_transform(all_data),
+            self.reg.fit(preproc.fit_transform(all_data),
                          np.concatenate(all_tgts, axis=0))
             return None
 
     def eval_test(self) -> float:
+        _, preproc = self.check_ca()
         all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
 
-        return self.reg.score(self.preproc.transform(all_data),
+        return self.reg.score(preproc.transform(all_data),
                               np.concatenate(all_tgts, axis=0))
