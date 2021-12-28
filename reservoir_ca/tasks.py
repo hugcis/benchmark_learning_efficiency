@@ -415,7 +415,6 @@ class ElementaryLanguage(TokenTask):
         return choose_minimal_set(tasks, max_n_seq, mask=mask)
 
 
-
 class AdjectiveLanguage(TokenTask):
     def __init__(self,
                  object_names: List[str] = ["BANANA", "APPLE", "PEAR",
@@ -441,6 +440,7 @@ class AdjectiveLanguage(TokenTask):
         super().__init__("qa", 0, dictionary)
 
     def generate_tasks(self, max_n_seq: int = 10 , **kwargs):
+        del kwargs
         tasks: TaskType = []
         mask: Mask = []
         st = set()
