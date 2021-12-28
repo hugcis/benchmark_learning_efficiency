@@ -1,2 +1,6 @@
 [core]
     analytics = false
+    remote = ciirc-cluster-remote
+['remote "ciirc-cluster-remote"']
+    url = ssh://ciirc-cluster:/home/cisnehug/dvc-cache/experiment_results/
+    ask_password = true
