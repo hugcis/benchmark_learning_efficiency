@@ -3,6 +3,7 @@ Helper function for running the experiments. Since all experiments will be
 run in parallel we use file locking to ensure that each write to the aggregated
 result file is atomic.
 """
+from enum import Enum
 import sys
 from dataclasses import asdict
 import random
@@ -14,7 +15,7 @@ from typing import Dict, Tuple, Type, List, Any, Optional
 import numpy as np
 from tqdm import tqdm
 
-from reservoir_ca.ca_res import CAReservoir
+from reservoir_ca.ca_res import CAInput, CAReservoir, CARuleType
 from reservoir_ca.tasks import Task
 from reservoir_ca.experiment import ExpOptions, Experiment, ProjectionType, RegType
 
@@ -73,6 +74,12 @@ class AtomicOpen:
         if (exc_type != None): return False
         else:                  return True
 
+ENUM_CHOICES = {
+    "reg_type": ["linearsvm", "rbfsvm", "linear", "rbf", "mlp",
+                 "randomforest", "conv", "conv_mlp", "logistic"],
+    "proj_type": ["one_to_one", "one_to_many", "one_to_pattern"],
+    "ca_rule_type": ["standard", "winput"]
+}
 
 def make_parser() -> argparse.ArgumentParser:
     """
@@ -86,21 +93,21 @@ def make_parser() -> argparse.ArgumentParser:
     base_options = ExpOptions()
     opts_dict = asdict(base_options)
     for opt in opts_dict:
-        if opt == "rules" or opt == "seed" or opt == "reg_type" or opt == "proj_type":
+        if opt == "rules" or opt == "seed":
             continue
-        parser.add_argument(f"--{opt}", default=vars(base_options).get(opt, None),
-                            type=type(opts_dict[opt]))
+        elif isinstance(opts_dict[opt], Enum):
+            choices = ENUM_CHOICES[opt]
+            parser.add_argument(f"--{opt}", default=choices[0],
+                                choices=choices, type=str)
+        else:
+            parser.add_argument(f"--{opt}", default=vars(base_options).get(opt, None),
+                                type=type(opts_dict[opt]))
 
     parser.add_argument("--return-name", default=False, action="store_true")
     parser.add_argument("--increment-data", default=False, action="store_true")
     parser.add_argument("--results-file-name", type=str, default=None)
     parser.add_argument("--rules", nargs="+", default=list(range(256)))
     parser.add_argument("--seed", type=int, default=84923)
-    parser.add_argument("--reg_type", type=str, default="linearsvm",
-                        choices=["linearsvm", "rbfsvm", "linear", "rbf", "mlp",
-                                 "randomforest", "conv", "conv_mlp", "logistic"])
-    parser.add_argument("--proj_type", type=str, default="one_to_one",
-                        choices=["one_to_one", "one_to_many", "one_to_pattern"])
     return parser
 
 
@@ -182,8 +189,9 @@ class Result:
         else:
             return {}
 
+InitExp = Tuple[Result, ExpOptions, List[int], Type[CAReservoir]]
 
-def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions, List[int]]:
+def init_exp(name: str, opts_extra: Dict[str, Any]) -> InitExp:
     """
     Initialize an experiment. This will read the command line arguments as well as the
     optional extra options and return a Result object, the experiment options as well as
@@ -194,12 +202,14 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions,
     opts = ExpOptions()
     rules = [int(i) for i in args.rules]
     for p in vars(opts):
-        if p != "proj_type" and p != "reg_type" and p in vars(args):
-            setattr(opts, p, vars(args)[p])
-        elif p == "reg_type":
+        if p == "reg_type":
             opts.reg_type = RegType.from_str(args.reg_type)
         elif p == "proj_type":
             opts.proj_type = ProjectionType[args.proj_type.upper()]
+        elif p == "ca_rule_type":
+            opts.ca_rule_type = CARuleType[args.ca_rule_type.upper()]
+        elif p in vars(args):
+            setattr(opts, p, vars(args)[p])
 
     # opts_extra overwrites the command line arguments
     for k, v in opts_extra.items():
@@ -216,18 +226,19 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions,
 
     print(opts)
     json_opts = name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ".json")
+    interm_rep = name.split("#")[0]
     base = pathlib.Path().resolve()
 
-    opts_path = base / "experiment_results" / pathlib.Path(json_opts)
+    opts_path = base / "experiment_results" / interm_rep / pathlib.Path(json_opts)
     if not opts_path.exists():
         with open(opts_path, "w") as f:
             f.write(opts.to_json())
 
     res_fname = name.replace("#", f"_{opts.hashed_repr()}")
-    path = base / "experiment_results" / pathlib.Path(res_fname)
+    path = base / "experiment_results" / interm_rep / pathlib.Path(res_fname)
 
     count_fname = name.replace("#", f"_count_{opts.hashed_repr()}")
-    counts_path = base / "experiment_results" / pathlib.Path(count_fname)
+    counts_path = base / "experiment_results" / interm_rep / pathlib.Path(count_fname)
 
     res = Result(path, opts_path, counts_path)
 
@@ -245,7 +256,14 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> Tuple[Result, ExpOptions,
     random.seed(seed)
     np.random.seed(seed)
 
-    return res, opts, rules
+    if opts.ca_rule_type == CARuleType.STANDARD:
+        ca_class = CAReservoir
+    elif opts.ca_rule_type == CARuleType.WINPUT:
+        ca_class = CAInput
+    else:
+        raise ValueError(f"Incorrect CA rule type {opts.ca_rule_type}")
+
+    return res, opts, rules, ca_class
 
 
 def run_task(task_cls: Type[Task], cls_args: List[Any],
@@ -259,24 +277,18 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
     if fname is None:
         fname = task.name + "#.pkl"
 
-    res, opts, rules = init_exp(fname, opts_extra)
+    res, opts, rules, ca_class = init_exp(fname, opts_extra)
     if rules:
         for _ in tqdm(range(opts.n_rep), miniters=10):
-            ca = CAReservoir(0, task.output_dimension(),
-                                redundancy=opts.redundancy,
-                                r_height=opts.r_height,
-                                proj_factor=opts.proj_factor,
-                                proj_type=opts.proj_type,
-                                proj_pattern=opts.proj_pattern)
-            exp = Experiment(ca, task, opts)
+            exp = Experiment(task, opts)
             for t in rules:
-                ca = CAReservoir(t, exp.task.output_dimension(),
-                                 redundancy=opts.redundancy,
-                                 r_height=opts.r_height,
-                                 proj_factor=opts.proj_factor,
-                                 proj_type=opts.proj_type,
-                                 proj_pattern=opts.proj_pattern)
-                exp.ca = ca
+                ca = ca_class(t, exp.task.output_dimension(),
+                              redundancy=opts.redundancy,
+                              r_height=opts.r_height,
+                              proj_factor=opts.proj_factor,
+                              proj_type=opts.proj_type,
+                              proj_pattern=opts.proj_pattern)
+                exp.set_ca(ca)
                 exp.fit()
                 res.update(t, exp.eval_test())
         res.save()
