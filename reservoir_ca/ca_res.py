@@ -12,6 +12,7 @@ class ProjectionType(Enum):
     def __str__(self):
         return f"{self.name}"
 
+
 class CARuleType(Enum):
     STANDARD = 1
     WINPUT = 2
@@ -20,18 +21,24 @@ class CARuleType(Enum):
     def __str__(self):
         return f"{self.name}"
 
+
 def rule_array_from_int(ca_rule: int, n_size: int,
                         check_input: bool = False) -> np.ndarray:
     """
     Converts a rule id to an array corresponding to all ordered
     binary inputs. Only works with rule/ids with binary states.
     """
+    if not validate_rule(ca_rule, n_size, 2, check_input):
+        raise ValueError("Invalid rule id")
     formatter = f"0{2 ** (2 * n_size + (2 if check_input else 1))}b"
     rule_list = format(ca_rule, formatter)
     rule_list = [int(i) for i in rule_list]
     # Convert to array and reverse the list
     return np.array(rule_list[::-1])
 
+def rule_array_to_int(rule_array: np.ndarray):
+    """ Only works with rule/ids with binary states. """
+    return sum(rule_array[k] * 2**k for k in range(len(rule_array)))
 
 def validate_rule(rule: int, n_size: int, n_states: int,
                   check_input: bool = False):
@@ -67,7 +74,6 @@ class CAReservoir:
         self.rule_array = rule_array_from_int(self.ca_rule, n_size)
 
         self.inp_size = inp_size
-        assert isinstance(proj_type, ProjectionType)
         self.proj_type = proj_type
         self.proj_pattern = proj_pattern
         self.proj_matrix = self.set_proj_matrix()
@@ -130,7 +136,6 @@ class CAReservoir:
         assert inp.shape[1] == self.inp_size
         projected_inp = inp @ self.proj_matrix
 
-
         # The input is encoded into the current state via the input function
         mod_state = self.input_function(projected_inp, state)
         output = np.zeros((inp.shape[0], self.r_height, self.state_size))
@@ -162,7 +167,6 @@ class CAInput(CAReservoir):
         self.rule_array = rule_array_from_int(self.ca_rule, n_size, True)
 
         self.inp_size = inp_size
-        assert isinstance(proj_type, ProjectionType)
         self.proj_type = proj_type
         self.proj_pattern = proj_pattern
         self.proj_matrix = self.set_proj_matrix()

@@ -15,7 +15,7 @@ from typing import Dict, Tuple, Type, List, Any, Optional
 import numpy as np
 from tqdm import tqdm
 
-from reservoir_ca.ca_res import CAInput, CAReservoir, CARuleType
+from reservoir_ca.ca_res import CAInput, CAReservoir, CARuleType, rule_array_from_int
 from reservoir_ca.tasks import Task
 from reservoir_ca.experiment import ExpOptions, Experiment, ProjectionType, RegType
 
@@ -78,7 +78,7 @@ ENUM_CHOICES = {
     "reg_type": ["linearsvm", "rbfsvm", "linear", "rbf", "mlp",
                  "randomforest", "conv", "conv_mlp", "logistic"],
     "proj_type": ["one_to_one", "one_to_many", "one_to_pattern"],
-    "ca_rule_type": ["standard", "winput"]
+    "ca_rule_type": ["standard", "winput", "winputonce"]
 }
 
 def make_parser() -> argparse.ArgumentParser:
@@ -141,7 +141,7 @@ class Result:
             self.res[rule] = []
         self.res[rule].append(result)
 
-    def save(self):
+    def save(self) -> Dict[int, list[float]]:
         """ Flush the current results to disk. """
         added_values = {}
         for r in self.res:
@@ -174,8 +174,9 @@ class Result:
                     pkl.dump(self.res, f)
 
         # Flush results
+        ret_res = self.res
         self.res = {}
-
+        return ret_res
 
     def read(self) -> Dict[int, int]:
         """
@@ -191,7 +192,9 @@ class Result:
 
 InitExp = Tuple[Result, ExpOptions, List[int], Type[CAReservoir]]
 
-def init_exp(name: str, opts_extra: Dict[str, Any]) -> InitExp:
+def init_exp(name: str, opts_extra: Dict[str, Any],
+             rules: Optional[list[int]] = None,
+             exp_dirname: str = "experiment_results") -> InitExp:
     """
     Initialize an experiment. This will read the command line arguments as well as the
     optional extra options and return a Result object, the experiment options as well as
@@ -200,7 +203,9 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> InitExp:
     parser = make_parser()
     args = parser.parse_args()
     opts = ExpOptions()
-    rules = [int(i) for i in args.rules]
+    if rules is None:
+        rules = [int(i) for i in args.rules]
+
     for p in vars(opts):
         if p == "reg_type":
             opts.reg_type = RegType.from_str(args.reg_type)
@@ -228,17 +233,19 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> InitExp:
     json_opts = name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ".json")
     interm_rep = name.split("#")[0]
     base = pathlib.Path().resolve()
+    out_dir = base / exp_dirname / interm_rep
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    opts_path = base / "experiment_results" / interm_rep / pathlib.Path(json_opts)
+    opts_path = out_dir / pathlib.Path(json_opts)
     if not opts_path.exists():
         with open(opts_path, "w") as f:
             f.write(opts.to_json())
 
     res_fname = name.replace("#", f"_{opts.hashed_repr()}")
-    path = base / "experiment_results" / interm_rep / pathlib.Path(res_fname)
+    path = out_dir / pathlib.Path(res_fname)
 
     count_fname = name.replace("#", f"_count_{opts.hashed_repr()}")
-    counts_path = base / "experiment_results" / interm_rep / pathlib.Path(count_fname)
+    counts_path = out_dir / pathlib.Path(count_fname)
 
     res = Result(path, opts_path, counts_path)
 
@@ -268,7 +275,8 @@ def init_exp(name: str, opts_extra: Dict[str, Any]) -> InitExp:
 
 def run_task(task_cls: Type[Task], cls_args: List[Any],
              opts_extra: Dict[str, Any] = {},
-             fname: Optional[str] = None):
+             fname: Optional[str] = None,
+             rules: Optional[List[int]] = None) -> Dict[int, List[float]]:
     """
     This function runs an experiment specified by its task, options and
     optional name for the output.
@@ -277,7 +285,7 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
     if fname is None:
         fname = task.name + "#.pkl"
 
-    res, opts, rules, ca_class = init_exp(fname, opts_extra)
+    res, opts, rules, ca_class = init_exp(fname, opts_extra, rules=rules)
     if rules:
         for _ in tqdm(range(opts.n_rep), miniters=10):
             exp = Experiment(task, opts)
@@ -291,4 +299,24 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
                 exp.set_ca(ca)
                 exp.fit()
                 res.update(t, exp.eval_test())
-        res.save()
+        return res.save()
+    return {}
+
+class RuleOptimizer:
+    def __init__(self, task_cls: Type[Task], cls_args: List[Any],
+                 opts_extra: Dict[str, Any] = {},
+                 initial_rule: Optional[int] = None) -> None:
+        self.task_cls = task_cls
+        self.cls_args = cls_args
+        self.opts_extra = opts_extra
+
+        if initial_rule is None:
+            self.initial_rule = rule_array_from_int(np.random.randint(256), 1,
+                                                    check_input=True)
+        else:
+            self.initial_rule = rule_array_from_int(initial_rule, 1,
+                                                    check_input=True)
+
+    def mutate_rule(self) -> list[list[int]]:
+
+        return []

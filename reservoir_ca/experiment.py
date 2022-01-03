@@ -3,12 +3,12 @@ import json
 import dataclasses
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Any, Tuple, Optional
+from typing import List, Tuple, Optional
 from abc import ABC, abstractmethod
 
 import numpy as np
 
-from reservoir_ca.tasks import BinarizedTask, Task, TokenTask
+from reservoir_ca.tasks import BinarizedTask, Task, TokenTask, Mask
 from reservoir_ca.ca_res import CAReservoir, CARuleType, ProjectionType
 from reservoir_ca.decoders import (LinearSVC, SVC, StandardScaler,
                                    MLPClassifier, RandomForestClassifier,
@@ -90,11 +90,13 @@ class ExpOptions:
 def to_dim_one_hot(data, out_dim):
     return np.eye(out_dim)[data]
 
+GroupedMasks = List[List[List[int]]]
+NumTaskType = List[List[int]]
 
 def group_by_lens(
-        seqs: List[List[Any]],
-        masks: Optional[List[List[int]]] = None
-) -> Tuple[List[np.ndarray], Optional[List[List[int]]]]:
+        seqs: NumTaskType,
+        masks: Mask = None
+) -> Tuple[List[np.ndarray], Optional[GroupedMasks]]:
     lens = set(len(c) for c in seqs)
     grouped_seqs = []
     grouped_masks = []
@@ -224,7 +226,7 @@ class Experiment:
 
     def process_tasks(
             self, tasks: List[np.ndarray],
-            masks: Optional[List[List[int]]] = None
+            masks: Optional[GroupedMasks] = None
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         ca, _ = self.check_ca()
         all_data = []
