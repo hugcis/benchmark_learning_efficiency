@@ -147,6 +147,7 @@ class CAReservoir:
 
 
 class CAInput(CAReservoir):
+    use_input_once: bool
     """ A variant of cellular automata with inputs """
     def __init__(self, ca_rule: int, inp_size: int, redundancy: int = 4,
                  r_height: int = 2, proj_factor: int = 40,

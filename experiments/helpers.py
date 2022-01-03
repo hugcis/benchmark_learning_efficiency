@@ -265,7 +265,7 @@ def init_exp(name: str, opts_extra: Dict[str, Any],
 
     if opts.ca_rule_type == CARuleType.STANDARD:
         ca_class = CAReservoir
-    elif opts.ca_rule_type == CARuleType.WINPUT:
+    elif opts.ca_rule_type in [CARuleType.WINPUT, CARuleType.WINPUTONCE]:
         ca_class = CAInput
     else:
         raise ValueError(f"Incorrect CA rule type {opts.ca_rule_type}")
@@ -296,6 +296,8 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
                               proj_factor=opts.proj_factor,
                               proj_type=opts.proj_type,
                               proj_pattern=opts.proj_pattern)
+                if opts.ca_rule_type == CARuleType.WINPUTONCE and isinstance(ca, CAInput):
+                    ca.use_input_once = True
                 exp.set_ca(ca)
                 exp.fit()
                 res.update(t, exp.eval_test())
