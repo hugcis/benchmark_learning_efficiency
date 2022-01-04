@@ -247,7 +247,7 @@ class SymbolCounting(TokenTask):
 
 class HardSymbolCounting(TokenTask):
     def __init__(self, lengths: Union[int, Sequence[int]],
-                 dictionary: List[str] = ["A", "B", "C"],
+                 dictionary: List[str] = ["A", "B", "C", "D", "E"],
                  separator_symbol: str = "y",
                  query_symbol: str = "x"):
         super().__init__("hard-sym-ct", lengths, dictionary +
@@ -269,7 +269,7 @@ class HardSymbolCounting(TokenTask):
                 current_task_mask = []
                 left = np.random.choice(
                     self.base_dic + [self.separator_symbol] * 2 * len(self.base_dic),
-                    size=t, replace=True).tolist()
+                    size=int(2.5 * t), replace=True).tolist()
                 while left and left[0] == self.separator_symbol:
                     left.pop(0)
                 while left and left[-1] == self.separator_symbol:
@@ -290,9 +290,11 @@ class HardSymbolCounting(TokenTask):
                                       replace=False)
                 left = left + [self.query_symbol]
                 for tc in tk:
+                    if ct[tc] >= 10:
+                        continue
                     left = left + list(tc) + [self.separator_symbol, str(ct[tc])]
                     current_task_mask.append(len(left) - 1)
-                    if np.random.random() > 0.5:
+                    if np.random.random() > 0.3:
                         negative = list(3 * tc[:])
                         np.random.shuffle(negative)
                         negative = negative[:len(tc) + np.random.randint(-2, 3)]
