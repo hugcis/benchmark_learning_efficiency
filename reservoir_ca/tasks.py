@@ -425,6 +425,7 @@ class HarderElementaryLanguage(ElementaryLanguage):
                                             "BRUNO", "LISA"],
                  verbs: List[str] = ["SEE", "HEAR", "CALL", "FEEL", "SMELL"]):
         super().__init__(object_names=object_names, verbs=verbs)
+        self.name = "hard-qa"
 
 
 class AdjectiveLanguage(TokenTask):
