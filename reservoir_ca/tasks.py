@@ -260,6 +260,7 @@ class HardSymbolCounting(TokenTask):
         self.base_dic = dictionary + [separator_symbol]
 
     def generate_tasks(self, max_n_seq: int = 10, **kwargs):
+        del kwargs
         tasks = []
         mask = []
         st = set()
@@ -360,12 +361,10 @@ def make_adj_sentences(size_adj, color_adj, obj_names):
 class ElementaryLanguage(TokenTask):
     def __init__(self,
                  object_names: List[str] = ["PETER", "JOHN", "TOM",
-                                                "JAMES", "PAUL"],
+                                            "JAMES", "PAUL"],
                  separator_symbol: str = " ",
                  sentence_term_symbol: str = ".",
                  verbs: List[str] = ["SEE", "HEAR"],
-                 #color_adj: Sequence[str] = ["RED", "GREEN", "BLUE"],
-                 #size_adj: Sequence[str] = ["SMALL", "BIG"],
                  query_symbol: str = "?"):
         self.object_names = object_names
         self.verbs = verbs
@@ -415,6 +414,17 @@ class ElementaryLanguage(TokenTask):
                 mask.append(current_mask)
                 st.add(task_str)
         return choose_minimal_set(tasks, max_n_seq, mask=mask)
+
+
+
+class HarderElementaryLanguage(ElementaryLanguage):
+    def __init__(self,
+                 object_names: List[str] = ["PETER", "JOHN", "TOM",
+                                            "JAMES", "PAUL", "MARC",
+                                            "LUKE", "SIMON", "ANDREW",
+                                            "BRUNO", "LISA"],
+                 verbs: List[str] = ["SEE", "HEAR", "CALL", "FEEL", "SMELL"]):
+        super().__init__(object_names=object_names, verbs=verbs)
 
 
 class AdjectiveLanguage(TokenTask):
