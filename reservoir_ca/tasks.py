@@ -436,7 +436,7 @@ class ElementaryLanguageWithWorldDef(ElementaryLanguage):
                                             "BRUNO", "LISA", "HENRI", "LEO"],
                  verbs: List[str] = ["SEE", "HEAR", "CALL", "FEEL", "SMELL", "UNDERSTAND", "TOUCH"]):
         super().__init__(object_names=object_names, verbs=verbs)
-        self.name = "hard-qa"
+        self.name = "qa-world-def"
 
     def generate_tasks(self, max_n_seq: int = 10 , **kwargs):
         del kwargs
