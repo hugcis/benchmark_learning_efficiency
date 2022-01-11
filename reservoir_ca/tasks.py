@@ -378,6 +378,7 @@ class ElementaryLanguage(TokenTask):
         super().__init__("qa", 0, dictionary)
 
     def generate_tasks(self, max_n_seq: int = 10 , **kwargs):
+        del kwargs
         tasks: TaskType = []
         mask: Mask = []
         st = set()
@@ -416,7 +417,6 @@ class ElementaryLanguage(TokenTask):
         return choose_minimal_set(tasks, max_n_seq, mask=mask)
 
 
-
 class HarderElementaryLanguage(ElementaryLanguage):
     def __init__(self,
                  object_names: List[str] = ["PETER", "JOHN", "TOM",
@@ -426,6 +426,81 @@ class HarderElementaryLanguage(ElementaryLanguage):
                  verbs: List[str] = ["SEE", "HEAR", "CALL", "FEEL", "SMELL"]):
         super().__init__(object_names=object_names, verbs=verbs)
         self.name = "hard-qa"
+
+
+class ElementaryLanguageWithWorldDef(ElementaryLanguage):
+    def __init__(self,
+                 object_names: List[str] = ["PETER", "JOHN", "TOM",
+                                            "JAMES", "PAUL", "MARC",
+                                            "LUKE", "SIMON", "ANDREW",
+                                            "BRUNO", "LISA", "HENRI", "LEO"],
+                 verbs: List[str] = ["SEE", "HEAR", "CALL", "FEEL", "SMELL", "UNDERSTAND", "TOUCH"]):
+        super().__init__(object_names=object_names, verbs=verbs)
+        self.name = "hard-qa"
+
+    def generate_tasks(self, max_n_seq: int = 10 , **kwargs):
+        del kwargs
+        tasks: TaskType = []
+        mask: Mask = []
+        st = set()
+        for _ in range(max_n_seq):
+            current_mask = []
+
+            # Choose a subset of object names to work with
+            subset_size = np.random.randint(1, len(self.object_names))
+            subset = np.random.choice(self.object_names, size=subset_size,
+                                      replace=False)
+
+            # Choose the number of verbs to use
+            n_verbs = np.random.randint(1, min(len(self.verbs), subset_size) + 1)
+            verbs = np.random.choice(self.verbs, size=n_verbs, replace=False)
+
+            name_map: Dict[str, list[str]] = {}
+            indices = np.random.choice(range(len(subset)), size=n_verbs,
+                                       replace=False)
+            indices = np.sort(indices)
+            for i, verb in enumerate(verbs):
+                right = len(subset) if i >= len(verbs) - 1 else indices[i+1]
+                name_map[verb] = subset[indices[i]:right].tolist()
+
+            task = []
+            yes_map: Dict[str, list[str]] = {}
+            no_map: Dict[str, list[str]] = {}
+            first = True
+            for verb in verbs:
+                if not first:
+                    task += [self.sentence_term_symbol]
+                else:
+                    first = False
+                # Decide the yes names and the no names (may be empty)
+                yes = np.random.randint(len(name_map[verb]) + 1)
+                yes_names = np.random.choice(name_map[verb], size=yes,
+                                             replace=False).tolist()
+                yes_map[verb] = yes_names
+                if yes_names:
+                    yes_names = " AND ".join(yes_names).split(" ")
+                no_names = [i for i in name_map[verb] if i not in yes_names]
+                no_map[verb] = no_names
+                if no_names:
+                    no_names = " AND ".join(no_names).split(" ")
+
+                # Build the sentence
+                task += make_sentence(yes_names, no_names, verb)
+
+            # Choose which verb/name we will ask about
+            question_verb = str(np.random.choice(verbs))
+            tgt = np.random.choice(name_map[question_verb])
+            # Make the answer
+            task += ([self.sentence_term_symbol] +
+                     ["DO", "I", question_verb, tgt, self.query_symbol] +
+                     ["YES" if tgt in yes_map[question_verb] else "NO"])
+            current_mask.append(len(task) - 1)
+            task_str = self.separator_symbol.join(task)
+            if task_str not in st:
+                tasks.append(task)
+                mask.append(current_mask)
+                st.add(task_str)
+        return choose_minimal_set(tasks, max_n_seq, mask=mask)
 
 
 class AdjectiveLanguage(TokenTask):
