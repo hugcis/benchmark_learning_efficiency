@@ -3,12 +3,13 @@ import json
 import dataclasses
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 from abc import ABC, abstractmethod
 
 import numpy as np
 
 from reservoir_ca.tasks import BinarizedTask, Task, TokenTask, Mask
+from reservoir_ca.esn_res import ESN
 from reservoir_ca.ca_res import CAReservoir, CARuleType, ProjectionType
 from reservoir_ca.decoders import (LinearSVC, SVC, SGDCls, StandardScaler,
                                    MLPClassifier, RandomForestClassifier,
@@ -152,11 +153,14 @@ class ScalePreprocessor(Preprocessor):
         return self.scaler.fit_transform(np.concatenate(X, axis=1).reshape(-1, self.output_size))
 
 
+Reservoir = Union[CAReservoir, ESN]
+
+
 class Experiment:
-    ca: Optional[CAReservoir] = None
+    ca: Optional[Reservoir] = None
 
     def __init__(self, task: Task, exp_options: ExpOptions = ExpOptions(),
-                 ca: Optional[CAReservoir] = None):
+                 ca: Optional[Reservoir] = None):
         self.opts = exp_options
         if ca is not None:
             self.set_ca(ca)
@@ -210,12 +214,13 @@ class Experiment:
     def output_dim(self) -> int:
         return self.task.output_dimension()
 
-    def set_ca(self, ca: CAReservoir):
+    def set_ca(self, ca: Reservoir):
         if self.ca is not None:
             current_size = self.ca.state_size
         else:
             current_size = None
         self.ca = ca
+        assert self.ca is not None
         if current_size is None or self.ca.state_size != current_size:
             if self.opts.reg_type == RegType.CONV_MLP:
                 self.preproc = ConvPreprocessor(self.opts.r_height,
@@ -223,7 +228,7 @@ class Experiment:
             else:
                 self.preproc = ScalePreprocessor(self.ca.output_size)
 
-    def check_ca(self) -> Tuple[CAReservoir, Preprocessor]:
+    def check_ca(self) -> Tuple[Reservoir, Preprocessor]:
         if self.ca is None or self.preproc is None:
             raise ValueError("Must initialize ca with method `set_ca`")
         else:
@@ -255,7 +260,6 @@ class Experiment:
             else:
                 single_length_data = np.concatenate(single_length_data, axis=0)
                 single_length_tgts = np.concatenate(single_length_tgts, axis=0)
-            # print(single_length_data, single_length_tgts)
 
             all_data.append(np.concatenate(single_length_data, axis=1))
             all_tgts.append(single_length_tgts)

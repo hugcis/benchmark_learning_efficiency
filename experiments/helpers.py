@@ -16,8 +16,9 @@ import numpy as np
 from tqdm import tqdm
 
 from reservoir_ca.ca_res import CAInput, CAReservoir, CARuleType, rule_array_from_int
+from reservoir_ca.esn_res import ESN
 from reservoir_ca.tasks import Task
-from reservoir_ca.experiment import ExpOptions, Experiment, ProjectionType, RegType
+from reservoir_ca.experiment import ExpOptions, Experiment, ProjectionType, RegType, Reservoir
 
 
 # This is a very hack-it-yourself way to implement file locking in Python. I
@@ -111,6 +112,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=84923)
     parser.add_argument("--no-write", action="store_true", default=False)
     parser.add_argument("--exp_dirname", default=None, type=str)
+    parser.add_argument("--esn_baseline", action="store_true", default=False)
     return parser
 
 
@@ -234,7 +236,7 @@ class Result:
             return {}
 
 
-InitExp = Tuple[Result, ExpOptions, List[int], Type[CAReservoir]]
+InitExp = Tuple[Result, ExpOptions, List[int], Type[Reservoir]]
 
 
 def init_exp(name: str, opts_extra: Dict[str, Any],
@@ -315,7 +317,10 @@ def init_exp(name: str, opts_extra: Dict[str, Any],
     random.seed(seed)
     np.random.seed(seed)
 
-    if opts.ca_rule_type == CARuleType.STANDARD:
+    if args.esn_baseline:
+        ca_class = ESN
+        rules = [-1]
+    elif opts.ca_rule_type == CARuleType.STANDARD:
         ca_class = CAReservoir
     elif opts.ca_rule_type in [CARuleType.WINPUT, CARuleType.WINPUTONCE]:
         ca_class = CAInput
@@ -323,6 +328,29 @@ def init_exp(name: str, opts_extra: Dict[str, Any],
         raise ValueError(f"Incorrect CA rule type {opts.ca_rule_type}")
 
     return res, opts, rules, ca_class
+
+
+def make_ca_reservoir(ca_class: Type[CAReservoir], t: int,
+                      exp: Experiment,
+                      opts: ExpOptions) -> Reservoir:
+    ca = ca_class(t, exp.task.output_dimension(),
+                    redundancy=opts.redundancy,
+                    r_height=opts.r_height,
+                    proj_factor=opts.proj_factor,
+                    proj_type=opts.proj_type,
+                    proj_pattern=opts.proj_pattern)
+    if opts.ca_rule_type == CARuleType.WINPUTONCE and isinstance(ca, CAInput):
+        ca.use_input_once = True
+    return ca
+
+
+def make_esn_reservoir(esn_class: Type[ESN], exp: Experiment,
+                       opts: ExpOptions) -> Reservoir:
+    esn = esn_class(exp.task.output_dimension(),
+                    redundancy=opts.redundancy,
+                    r_height=opts.r_height,
+                    proj_factor=opts.proj_factor)
+    return esn
 
 
 def run_task(task_cls: Type[Task], cls_args: List[Any],
@@ -342,14 +370,12 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
         for _ in tqdm(range(opts.n_rep), miniters=10):
             exp = Experiment(task, opts)
             for t in rules:
-                ca = ca_class(t, exp.task.output_dimension(),
-                              redundancy=opts.redundancy,
-                              r_height=opts.r_height,
-                              proj_factor=opts.proj_factor,
-                              proj_type=opts.proj_type,
-                              proj_pattern=opts.proj_pattern)
-                if opts.ca_rule_type == CARuleType.WINPUTONCE and isinstance(ca, CAInput):
-                    ca.use_input_once = True
+                if ca_class in [CAReservoir, CAInput]:
+                    ca = make_ca_reservoir(ca_class, t, exp, opts)
+                elif ca_class == ESN:
+                    ca = make_esn_reservoir(ca_class, exp, opts)
+                else:
+                    raise TypeError(f"Unknown ca_class {ca_class}")
                 exp.set_ca(ca)
                 if opts.reg_type == RegType.SGDCLS:
                     partial_test_results = exp.fit_with_eval()
@@ -360,6 +386,7 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
                     res.update(t, exp.eval_test())
         return res.save()
     return {}, None
+
 
 class RuleOptimizer:
     def __init__(self, task_cls: Type[Task], cls_args: List[Any],

@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.data
-import torch.functional
+from torch.nn import functional
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.svm import LinearSVC, SVC
 from sklearn.preprocessing import StandardScaler
@@ -58,9 +58,9 @@ class ConvNetwork(nn.Module):
             X = torch.relu(conv(X))
         X = self.conv_last(X)
         if self.avg_pool:
-            return nn.functional.avg_pool1d(X, kernel_size=X.shape[-1])
+            return functional.avg_pool1d(X, kernel_size=X.shape[-1])
         else:
-            return nn.functional.max_pool1d(X, kernel_size=X.shape[-1])
+            return functional.max_pool1d(X, kernel_size=X.shape[-1])
 
 
 class OptType(Enum):
@@ -82,7 +82,7 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
     def fit(self, X, y, batch_size: Optional[int] = None, epochs: int = 10) -> "ConvClassifier":
         # Check classes
         self.classes_ = unique_labels(y)
-        self.inverse_classes_ = np.zeros(self.classes_.max() + 1, dtype=np.int)
+        self.inverse_classes_ = np.zeros(self.classes_.max() + 1, dtype=int)
         for i, c in enumerate(self.classes_):
             self.inverse_classes_[c] = i
 
@@ -158,7 +158,7 @@ class SGDCls(BaseEstimator, ClassifierMixin):
         self.test_values = []
         # Check classes
         self.classes_ = unique_labels(y)
-        self.inverse_classes_ = np.zeros(self.classes_.max() + 1, dtype=np.int)
+        self.inverse_classes_ = np.zeros(self.classes_.max() + 1, dtype=int)
         for i, c in enumerate(self.classes_):
             self.inverse_classes_[c] = i
 
