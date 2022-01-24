@@ -76,7 +76,8 @@ class AtomicOpen:
 
 ENUM_CHOICES = {
     "reg_type": ["linearsvm", "rbfsvm", "linear", "rbf", "mlp",
-                 "randomforest", "conv", "conv_mlp", "logistic"],
+                 "randomforest", "conv", "conv_mlp", "logistic",
+                 "sgd", "sgd_svm"],
     "proj_type": ["one_to_one", "one_to_many", "one_to_pattern"],
     "ca_rule_type": ["standard", "winput", "winputonce"]
 }
@@ -108,7 +109,26 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--results-file-name", type=str, default=None)
     parser.add_argument("--rules", nargs="+", default=list(range(256)))
     parser.add_argument("--seed", type=int, default=84923)
+    parser.add_argument("--no-write", action="store_true", default=False)
+    parser.add_argument("--exp_dirname", default=None, type=str)
     return parser
+
+
+def atomic_write_to_path(path: pathlib.Path, data: Dict[Any, list[Any]]):
+    if path.exists():
+        with AtomicOpen(path, "rb+") as f:
+            prev = pkl.loads(f.read())
+            for r in data:
+                prev[r] = prev.get(r, []) + data[r]
+            f.seek(0)
+            f.write(pkl.dumps(prev))
+            f.truncate()
+    else:
+        with AtomicOpen(path, "wb") as f:
+            pkl.dump(data, f)
+
+
+ResultType = Tuple[Dict[int, list[float]], Optional[Dict[str, Dict[int, list[Any]]]]]
 
 
 class Result:
@@ -124,13 +144,19 @@ class Result:
     `res.save()`.
     """
     res: Dict[int, list[float]]
+    res_extra: Dict[str, Dict[int, list[Any]]]
 
     def __init__(self, path: pathlib.Path, opts_path: pathlib.Path,
-                 counts_path: pathlib.Path):
+                 counts_path: pathlib.Path,
+                 path_extra: Optional[pathlib.Path] = None,
+                 no_write: bool = False):
         self.path = path
         self.opts_path = opts_path
         self.counts_path = counts_path
+        self.path_extra = path_extra
         self.res = {}
+        self.res_extra = {}
+        self.no_write = no_write
 
     def update(self, rule: int, result: float):
         """
@@ -141,42 +167,59 @@ class Result:
             self.res[rule] = []
         self.res[rule].append(result)
 
-    def save(self) -> Dict[int, list[float]]:
+    def update_extra(self, prefix: str, rule: int, result: Any):
+        if self.path_extra is None:
+            raise TypeError("path_extra cannot be None if updating extra")
+        if prefix not in self.res_extra:
+            self.res_extra[prefix] = {}
+        if rule not in self.res_extra[prefix]:
+            self.res_extra[prefix][rule] = []
+        self.res_extra[prefix][rule].append(result)
+
+    def save(self) -> ResultType:
         """ Flush the current results to disk. """
         added_values = {}
-        for r in self.res:
-            added_values[r] = added_values.get(r, 0) + len(self.res[r])
-        if not self.counts_path.exists():
-            pkl.dump({}, open(self.counts_path, "wb"))
+        if not self.no_write:
+            for r in self.res:
+                added_values[r] = added_values.get(r, 0) + len(self.res[r])
+            if not self.counts_path.exists():
+                pkl.dump({}, open(self.counts_path, "wb"))
 
-        with AtomicOpen(self.counts_path, "rb+") as f_counts:
-            counts_content = f_counts.read()
-            if counts_content:
-                ct = pkl.loads(counts_content)
-            else:
-                ct = {}
-            for r in added_values:
-                ct[r] = ct.get(r, 0) + added_values[r]
-            f_counts.seek(0)
-            f_counts.write(pkl.dumps(ct))
-            f_counts.truncate()
+            with AtomicOpen(self.counts_path, "rb+") as f_counts:
+                counts_content = f_counts.read()
+                if counts_content:
+                    ct = pkl.loads(counts_content)
+                else:
+                    ct = {}
+                for r in added_values:
+                    ct[r] = ct.get(r, 0) + added_values[r]
+                f_counts.seek(0)
+                f_counts.write(pkl.dumps(ct))
+                f_counts.truncate()
 
-            if self.path.exists():
-                with AtomicOpen(self.path, "rb+") as f:
-                    prev = pkl.loads(f.read())
-                    for r in self.res:
-                        prev[r] = prev.get(r, []) + self.res[r]
-                    f.seek(0)
-                    f.write(pkl.dumps(prev))
-                    f.truncate()
-            else:
-                with AtomicOpen(self.path, "wb") as f:
-                    pkl.dump(self.res, f)
+                atomic_write_to_path(self.path, self.res)
 
-        # Flush results
+        # Flush base results
         ret_res = self.res
         self.res = {}
-        return ret_res
+        # Extra results:
+        res_extra = self.save_extra()
+
+        return ret_res, res_extra
+
+    def save_extra(self) -> Optional[Dict[str, Dict[int, Any]]]:
+        if self.path_extra is not None and self.res_extra:
+            for prefix in self.res_extra:
+                if not self.no_write:
+                    name = self.path_extra.stem + f"_{prefix}" + self.path_extra.suffix
+                    pt = self.path_extra.parent / name
+                    atomic_write_to_path(pt, self.res_extra[prefix])
+            ret_res_extra = self.res_extra
+            self.res_extra = {}
+
+            return ret_res_extra
+        else:
+            return None
 
     def read(self) -> Dict[int, int]:
         """
@@ -190,7 +233,9 @@ class Result:
         else:
             return {}
 
+
 InitExp = Tuple[Result, ExpOptions, List[int], Type[CAReservoir]]
+
 
 def init_exp(name: str, opts_extra: Dict[str, Any],
              rules: Optional[list[int]] = None,
@@ -233,6 +278,10 @@ def init_exp(name: str, opts_extra: Dict[str, Any],
     json_opts = name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ".json")
     interm_rep = name.split("#")[0]
     base = pathlib.Path().resolve()
+    #
+    # Command line experiment dirname overwrites the function argument
+    if args.exp_dirname is not None:
+        exp_dirname = args.exp_dirname
     out_dir = base / exp_dirname / interm_rep
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -247,7 +296,10 @@ def init_exp(name: str, opts_extra: Dict[str, Any],
     count_fname = name.replace("#", f"_count_{opts.hashed_repr()}")
     counts_path = out_dir / pathlib.Path(count_fname)
 
-    res = Result(path, opts_path, counts_path)
+    extra_fname = name.replace("#", f"_extra_{opts.hashed_repr()}")
+    extra_path = out_dir / pathlib.Path(extra_fname)
+
+    res = Result(path, opts_path, counts_path, extra_path, no_write=args.no_write)
 
     # We skip if some of the rules we are processing already have the desired number of
     # experimental results.
@@ -276,7 +328,7 @@ def init_exp(name: str, opts_extra: Dict[str, Any],
 def run_task(task_cls: Type[Task], cls_args: List[Any],
              opts_extra: Dict[str, Any] = {},
              fname: Optional[str] = None,
-             rules: Optional[List[int]] = None) -> Dict[int, List[float]]:
+             rules: Optional[List[int]] = None) -> ResultType:
     """
     This function runs an experiment specified by its task, options and
     optional name for the output.
@@ -299,10 +351,15 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
                 if opts.ca_rule_type == CARuleType.WINPUTONCE and isinstance(ca, CAInput):
                     ca.use_input_once = True
                 exp.set_ca(ca)
-                exp.fit()
-                res.update(t, exp.eval_test())
+                if opts.reg_type == RegType.SGDCLS:
+                    partial_test_results = exp.fit_with_eval()
+                    res.update(t, partial_test_results[-1])
+                    res.update_extra("tta", t, partial_test_results)
+                else:
+                    exp.fit()
+                    res.update(t, exp.eval_test())
         return res.save()
-    return {}
+    return {}, None
 
 class RuleOptimizer:
     def __init__(self, task_cls: Type[Task], cls_args: List[Any],

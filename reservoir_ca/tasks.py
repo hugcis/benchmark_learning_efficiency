@@ -5,7 +5,7 @@ import collections
 
 TaskType = List[List[str]]
 Mask = Optional[List[List[int]]]
-
+TaskMask = Tuple[TaskType, Mask]
 
 def choose_minimal_set(tasks: TaskType, max_n_seq: int,
                        mask: Mask = None) -> Tuple[TaskType, Mask]:

@@ -10,7 +10,7 @@ import numpy as np
 
 from reservoir_ca.tasks import BinarizedTask, Task, TokenTask, Mask
 from reservoir_ca.ca_res import CAReservoir, CARuleType, ProjectionType
-from reservoir_ca.decoders import (LinearSVC, SVC, StandardScaler,
+from reservoir_ca.decoders import (LinearSVC, SVC, SGDCls, StandardScaler,
                                    MLPClassifier, RandomForestClassifier,
                                    ConvClassifier, LogisticRegression)
 
@@ -22,6 +22,7 @@ class RegType(Enum):
     RANDOMFOREST = 4
     CONV_MLP = 5
     LOGISTICREG = 6
+    SGDCLS = 7
 
     @staticmethod
     def from_str(label: str) -> "RegType":
@@ -37,6 +38,8 @@ class RegType(Enum):
             return RegType.CONV_MLP
         elif label in ("logistic", "logistic_reg"):
             return RegType.LOGISTICREG
+        elif label in ("sgd", "sgd_svm"):
+            return RegType.SGDCLS
         else:
             raise NotImplementedError
 
@@ -169,6 +172,8 @@ class Experiment:
             self.reg = ConvClassifier((32, 16))
         elif exp_options.reg_type == RegType.LOGISTICREG:
             self.reg = LogisticRegression(C=1.0, solver="liblinear")
+        elif exp_options.reg_type == RegType.SGDCLS:
+            self.reg = SGDCls()
 
         self.preproc = None
 
@@ -283,3 +288,20 @@ class Experiment:
 
         return self.reg.score(preproc.transform(all_data),
                               np.concatenate(all_tgts, axis=0))
+
+    def fit_with_eval(self):
+        if isinstance(self.reg, SGDCls):
+            _, preproc = self.check_ca()
+            all_data, all_tgts = self.process_tasks(self.training_tasks,
+                                                    self.training_masks)
+            all_data_test, all_tgts_test = self.process_tasks(self.testing_tasks,
+                                                            self.testing_masks)
+            # At this point self.reg can only be of SGD type
+            self.reg.fit(preproc.fit_transform(all_data),
+                         np.concatenate(all_tgts, axis=0),
+                         X_t=preproc.transform(all_data_test),
+                         y_t=np.concatenate(all_tgts_test, axis=0))
+        else:
+            raise ValueError("Regressor type should be SGD")
+
+        return self.reg.test_values

@@ -4,7 +4,9 @@ from typing import Optional, Sequence
 import numpy as np
 import torch
 import torch.nn as nn
-from sklearn.linear_model import LogisticRegression
+import torch.utils.data
+import torch.functional
+from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.svm import LinearSVC, SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPClassifier
@@ -143,3 +145,35 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
         # X = check_array(X)
         out = self.conv_network.forward(torch.Tensor(X))[:, :, 0]
         return self.classes_[out.argmax(1).detach().numpy()]
+
+
+class SGDCls(BaseEstimator, ClassifierMixin):
+    def __init__(self, verbose: bool = False):
+        self.verbose = verbose
+        self.sgd = SGDClassifier()
+        self.test_values = []
+
+    def fit(self, X, y, X_t=None, y_t=None,
+            batch_size: int = 8) -> "SGDCls":
+        self.test_values = []
+        # Check classes
+        self.classes_ = unique_labels(y)
+        self.inverse_classes_ = np.zeros(self.classes_.max() + 1, dtype=np.int)
+        for i, c in enumerate(self.classes_):
+            self.inverse_classes_[c] = i
+
+        classes = self.classes_
+        self.sgd.partial_fit(X[0:1], y[0:1], classes=classes)
+        self.test_values.append(self.sgd.score(X_t, y_t))
+        for i in range(0, X.shape[0], batch_size):
+            batch_X, batch_y = X[i:i+batch_size], y[i:i+batch_size]
+            self.sgd.partial_fit(batch_X, batch_y, classes=classes)
+            if X_t is not None and y_t is not None:
+                self.test_values.append(self.sgd.score(X_t, y_t))
+            if classes is not None:
+                classes = None
+        return self
+
+    def predict(self, X):
+        check_is_fitted(self)
+        return self.sgd.predict(X)
