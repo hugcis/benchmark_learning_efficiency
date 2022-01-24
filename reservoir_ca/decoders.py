@@ -154,7 +154,7 @@ class SGDCls(BaseEstimator, ClassifierMixin):
         self.test_values = []
 
     def fit(self, X, y, X_t=None, y_t=None,
-            batch_size: int = 8) -> "SGDCls":
+            batch_size: int = 16) -> "SGDCls":
         self.test_values = []
         # Check classes
         self.classes_ = unique_labels(y)
