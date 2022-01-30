@@ -150,7 +150,7 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
 class SGDCls(BaseEstimator, ClassifierMixin):
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
-        self.sgd = SGDClassifier()
+        self.sgd = SGDClassifier(learning_rate="constant", eta0=0.001, alpha=0.001)
         self.test_values = []
 
     def fit(self, X, y, X_t=None, y_t=None,
@@ -165,8 +165,9 @@ class SGDCls(BaseEstimator, ClassifierMixin):
         classes = self.classes_
         self.sgd.partial_fit(X[0:1], y[0:1], classes=classes)
         self.test_values.append(self.sgd.score(X_t, y_t))
+
         for i in range(0, X.shape[0], batch_size):
-            batch_X, batch_y = X[i:i+batch_size], y[i:i+batch_size]
+            batch_X, batch_y = X[i:i + batch_size], y[i:i + batch_size]
             self.sgd.partial_fit(batch_X, batch_y, classes=classes)
             if X_t is not None and y_t is not None:
                 self.test_values.append(self.sgd.score(X_t, y_t))
