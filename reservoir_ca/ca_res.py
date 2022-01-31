@@ -31,8 +31,8 @@ def rule_array_from_int(ca_rule: int, n_size: int,
     if not validate_rule(ca_rule, n_size, 2, check_input):
         raise ValueError("Invalid rule id")
     formatter = f"0{2 ** (2 * n_size + (2 if check_input else 1))}b"
-    rule_list = format(ca_rule, formatter)
-    rule_list = [int(i) for i in rule_list]
+    rule_str = format(ca_rule, formatter)
+    rule_list = [int(i) for i in rule_str]
     # Convert to array and reverse the list
     return np.array(rule_list[::-1])
 
@@ -108,10 +108,11 @@ class CAReservoir:
                 raise ValueError("Parameter proj_pattern must be set for this projection type")
             for t in range(self.redundancy):
                 idx_x = np.random.permutation(self.inp_size)
-                idx_y = [np.random.choice(self.proj_factor, size=self.inp_size)
-                         for _ in range(self.proj_pattern)]
-                for n, y in enumerate(idx_y):
-                    proj_matrix[:, t * self.proj_factor:(t + 1) * self.proj_factor][idx_x, y] = 1
+                idx_y_lst = [np.random.choice(self.proj_factor, size=self.inp_size)
+                             for _ in range(self.proj_pattern)]
+                for n, y in enumerate(idx_y_lst):
+                    proj_matrix[:, t * self.proj_factor:(t + 1) *
+                                self.proj_factor][idx_x, y] = 1
 
         else:
             raise ValueError("Unrecognized projection type {}".format(self.proj_type))
@@ -147,8 +148,10 @@ class CAReservoir:
 
 
 class CAInput(CAReservoir):
+    """A variant of cellular automata with inputs."""
+
     use_input_once: bool
-    """ A variant of cellular automata with inputs """
+
     def __init__(self, ca_rule: int, inp_size: int, redundancy: int = 4,
                  r_height: int = 2, proj_factor: int = 40,
                  proj_type: ProjectionType = ProjectionType.ONE_TO_ONE,

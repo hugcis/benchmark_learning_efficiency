@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, Sequence
+from typing import Optional, Sequence, List
 
 import numpy as np
 import torch
@@ -89,6 +89,8 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
         # Create network, optimizer and loss
         self.conv_network = ConvNetwork(self.channels, X.shape[1], len(self.classes_))
         self.conv_network.train()
+
+        optimizer: torch.optim.Optimizer
         if self.opt_type == OptType.LBGFS:
             optimizer = torch.optim.LBFGS(self.conv_network.parameters())
         elif self.opt_type == OptType.ADAM:
@@ -151,7 +153,7 @@ class SGDCls(BaseEstimator, ClassifierMixin):
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
         self.sgd = SGDClassifier(learning_rate="constant", eta0=0.001, alpha=0.001)
-        self.test_values = []
+        self.test_values: List[float] = []
 
     def fit(self, X, y, X_t=None, y_t=None,
             batch_size: int = 16) -> "SGDCls":

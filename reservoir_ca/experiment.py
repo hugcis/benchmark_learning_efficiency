@@ -17,6 +17,8 @@ from reservoir_ca.decoders import (LinearSVC, SVC, SGDCls, StandardScaler,
 
 
 class RegType(Enum):
+    """The type of regression used in the reservoir computing outer layer."""
+
     LINEARSVM = 1
     RBFSVM = 2
     MLP = 3
@@ -50,7 +52,8 @@ class RegType(Enum):
 
 @dataclass
 class ExpOptions:
-    """ An option class that holds all of the experiment parameters. """
+    """An option class that holds all of the experiment parameters."""
+
     seq_len: int = 100
     max_n_seq: int = 300
     n_rep: int = 10
@@ -158,6 +161,8 @@ Reservoir = Union[CAReservoir, ESN]
 
 class Experiment:
     ca: Optional[Reservoir] = None
+    preproc: Optional[Preprocessor] = None
+    task: Task
 
     def __init__(self, task: Task, exp_options: ExpOptions = ExpOptions(),
                  ca: Optional[Reservoir] = None):
@@ -256,23 +261,28 @@ class Experiment:
                 else:
                     single_length_data.append(output[:, None, :, :])
             if masks is None:
-                single_length_tgts = task_l[:, 1:].reshape(-1)
+                single_length_tgts_arr = task_l[:, 1:].reshape(-1)
             else:
                 single_length_data = np.concatenate(single_length_data, axis=0)
-                single_length_tgts = np.concatenate(single_length_tgts, axis=0)
+                single_length_tgts_arr = np.concatenate(single_length_tgts,
+                                                        axis=0)
 
             all_data.append(np.concatenate(single_length_data, axis=1))
-            all_tgts.append(single_length_tgts)
+            all_tgts.append(single_length_tgts_arr)
         return all_data, all_tgts
 
-    def fit(self, return_data=False) -> Optional[Tuple[List[np.ndarray], List[np.ndarray]]]:
-        """
-        Fit the experiments' regressor on the training and testing data of its task. If
-        you set `return_data=True`, the model won't be fitted and the function will return
-        the training dataset processed by the CA reservoir as well as the targets.
+    def fit(
+            self, return_data=False
+    ) -> Optional[Tuple[List[np.ndarray], List[np.ndarray]]]:
+        """Fit the experiments' regressor on the training and testing data of its task.
+
+        If you set `return_data=True`, the model won't be fitted and the
+        function will return the training dataset processed by the CA reservoir
+        as well as the targets.
         """
         ca, preproc = self.check_ca()
-        all_data, all_tgts = self.process_tasks(self.training_tasks, self.training_masks)
+        all_data, all_tgts = self.process_tasks(self.training_tasks,
+                                                self.training_masks)
 
         if return_data:
             inp = [all_data[c].reshape(len(task_l), -1, ca.state_size)
