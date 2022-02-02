@@ -38,11 +38,14 @@ class ScalePreprocessor(Preprocessor):
         self.output_size = output_size
         self.scaler = StandardScaler()
 
+    def reshape_inp(self, X) -> np.ndarray:
+        X.reshape(-1, self.output_size)
+
     def fit(self, X):
-        return self.scaler.fit(X.reshape(-1, self.output_size))
+        return self.scaler.fit(self.reshape_inp(X))
 
     def transform(self, X):
-        return self.scaler.transform(X.reshape(-1, self.output_size))
+        return self.scaler.transform(self.reshape_inp(X))
 
     def fit_transform(self, X):
-        return self.scaler.fit_transform(X.reshape(-1, self.output_size))
+        return self.scaler.fit_transform(self.reshape_inp(X))
