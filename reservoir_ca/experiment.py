@@ -220,14 +220,20 @@ class Experiment:
         ca, _ = self.check_ca()
         all_data = []
         all_tgts = []
+        # We loop across all the length groupings found
         for l_idx, task_l in enumerate(tasks):
             single_length_data = []
             single_length_tgts = []
+            # task_l is of dimension `batch x (length of sequence)`
             state = np.zeros((task_l.shape[0], ca.state_size), dtype=int)
             for t in range(task_l.shape[1] - 1):
                 inp = to_dim_one_hot(task_l[:, t], self.output_dim)
-                output, state = ca(state, inp)
+
+                output, state = ca(state, inp)  # The CA outputs a vector of
+                # size (batch x r_height x state_size)
+
                 if masks is not None:
+                    # Apply masking separatly for each item of the batch
                     for q in range(output.shape[0]):
                         if t + 1 in masks[l_idx][q]:
                             single_length_data.append(output[q : q + 1, None, :, :])
@@ -239,9 +245,9 @@ class Experiment:
             else:
                 single_length_data = np.concatenate(single_length_data, axis=0)
                 single_length_tgts_arr = np.concatenate(single_length_tgts, axis=0)
-
-            all_data.append(np.concatenate(single_length_data, axis=1))
+            all_data.append(single_length_data)
             all_tgts.append(single_length_tgts_arr)
+        # all_data is a list of vectors of shape (n_example x 1 x r_height x state_size)
         return all_data, all_tgts
 
     def fit(
@@ -271,7 +277,7 @@ class Experiment:
         else:
             # Flatten inp and targets for training of SVM
             self.reg.fit(
-                preproc.fit_transform(np.concatenate(all_data, axis=1)),
+                preproc.fit_transform(np.concatenate(all_data, axis=0)),
                 np.concatenate(all_tgts, axis=0),
             )
             return None
@@ -285,7 +291,7 @@ class Experiment:
 
         if return_target:
             return (
-                self.reg.predict(preproc.transform(np.concatenate(all_data, axis=1))),
+                self.reg.predict(preproc.transform(np.concatenate(all_data, axis=0))),
                 np.concatenate(all_tgts, axis=0),
             )
         else:
@@ -300,7 +306,7 @@ class Experiment:
         all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
 
         return self.reg.score(
-            preproc.transform(np.concatenate(all_data, axis=1)),
+            preproc.transform(np.concatenate(all_data, axis=0)),
             np.concatenate(all_tgts, axis=0),
         )
 
@@ -313,12 +319,12 @@ class Experiment:
             )
 
             if self.shuffle:
-                all_data = np.concatenate(all_data, axis=1)
-                shuffle_index = np.random.permutation(all_data.shape[1])
-                all_data = all_data[:, shuffle_index, :]
+                all_data = np.concatenate(all_data, axis=0)
+                shuffle_index = np.random.permutation(all_data.shape[0])
+                all_data = all_data[shuffle_index, :]
                 all_tgts = np.concatenate(all_tgts, axis=0)[shuffle_index]
             else:
-                all_data = np.concatenate(all_data, axis=1)
+                all_data = np.concatenate(all_data, axis=0)
                 all_tgts = np.concatenate(all_tgts, axis=0)
 
             all_data_test, all_tgts_test = self.process_tasks(
@@ -328,7 +334,7 @@ class Experiment:
             self.reg.fit(
                 preproc.fit_transform(all_data),
                 all_tgts,
-                X_t=preproc.transform(np.concatenate(all_data_test, axis=1)),
+                X_t=preproc.transform(np.concatenate(all_data_test, axis=0)),
                 y_t=np.concatenate(all_tgts_test, axis=0),
             )
         else:
