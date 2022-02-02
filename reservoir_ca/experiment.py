@@ -1,26 +1,26 @@
+import dataclasses
 import hashlib
 import json
-import dataclasses
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Tuple, Optional, Union
-from abc import ABC, abstractmethod
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 
-from reservoir_ca.tasks import BinarizedTask, Task, TokenTask, Mask
-from reservoir_ca.esn_res import ESN
 from reservoir_ca.ca_res import CAReservoir, CARuleType, ProjectionType
 from reservoir_ca.decoders import (
-    LinearSVC,
     SVC,
-    SGDCls,
-    StandardScaler,
+    ConvClassifier,
+    LinearSVC,
+    LogisticRegression,
     MLPClassifier,
     RandomForestClassifier,
-    ConvClassifier,
-    LogisticRegression,
+    SGDCls,
+    StandardScaler,
 )
+from reservoir_ca.esn_res import ESN
+from reservoir_ca.tasks import BinarizedTask, Mask, Task, TokenTask
 
 
 class RegType(Enum):
@@ -236,6 +236,7 @@ class Experiment:
             train_seqs, train_masks
         )
         self.testing_tasks, self.testing_masks = group_by_lens(test_seqs, test_masks)
+        self.shuffle = True
 
     @property
     def output_dim(self) -> int:
@@ -321,13 +322,26 @@ class Experiment:
             )
             return None
 
-    def predict_test(self) -> np.ndarray:
+    def predict_test(
+        self, return_target: bool = False
+    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        """Output the test set predictions for that experiment."""
         _, preproc = self.check_ca()
         all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
 
-        return self.reg.predict(preproc.transform(all_data))
+        if return_target:
+            return (
+                self.reg.predict(preproc.transform(all_data)),
+                np.concatenate(all_tgts, axis=0),
+            )
+        else:
+            return self.reg.predict(preproc.transform(all_data))
 
     def eval_test(self) -> float:
+        """Output the test set scores for that experiment, as computed by the
+        regressor's score function.
+
+        """
         _, preproc = self.check_ca()
         all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
 
@@ -335,23 +349,32 @@ class Experiment:
             preproc.transform(all_data), np.concatenate(all_tgts, axis=0)
         )
 
-    def fit_with_eval(self):
+    def fit_with_eval(self) -> list[float]:
+        """Fit the regressor with evaluation checkpoints and return eval values."""
         if isinstance(self.reg, SGDCls):
             _, preproc = self.check_ca()
             all_data, all_tgts = self.process_tasks(
                 self.training_tasks, self.training_masks
             )
+
+            if self.shuffle:
+                shuffle_index = np.random.permutation(all_data.shape[0])
+                all_data = all_data[shuffle_index]
+                all_tgts = np.concatenate(all_tgts, axis=0)[shuffle_index]
+            else:
+                all_tgts = np.concatenate(all_tgts, axis=0)
+
             all_data_test, all_tgts_test = self.process_tasks(
                 self.testing_tasks, self.testing_masks
             )
             # At this point self.reg can only be of SGD type
             self.reg.fit(
                 preproc.fit_transform(all_data),
-                np.concatenate(all_tgts, axis=0),
+                all_tgts,
                 X_t=preproc.transform(all_data_test),
                 y_t=np.concatenate(all_tgts_test, axis=0),
             )
         else:
-            raise ValueError("Regressor type should be SGD")
+            raise ValueError("Regressor type should be SGD to evaluate during fit")
 
         return self.reg.test_values

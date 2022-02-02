@@ -3,31 +3,29 @@ Helper function for running the experiments. Since all experiments will be
 run in parallel we use file locking to ensure that each write to the aggregated
 result file is atomic.
 """
-import os
+import argparse
 import logging
-from enum import Enum
+import os
+import pathlib
+import pickle as pkl
+import random
 import sys
 from dataclasses import asdict
-import random
-import pickle as pkl
-import pathlib
-import argparse
-from typing import Dict, Tuple, Type, List, Any, Optional
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import numpy as np
-from tqdm import tqdm
-
 from reservoir_ca.ca_res import CAInput, CAReservoir, CARuleType, rule_array_from_int
 from reservoir_ca.esn_res import ESN
-from reservoir_ca.tasks import Task
 from reservoir_ca.experiment import (
-    ExpOptions,
     Experiment,
+    ExpOptions,
     ProjectionType,
     RegType,
     Reservoir,
 )
-
+from reservoir_ca.tasks import Task
+from tqdm import tqdm
 
 # This is a very hack-it-yourself way to implement file locking in Python. I
 # would prefer a proper library

@@ -1,20 +1,19 @@
 from enum import Enum
-from typing import Optional, Sequence, List
+from typing import List, Optional, Sequence
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.data
-from torch.nn import functional
-from sklearn.linear_model import LogisticRegression, SGDClassifier
-from sklearn.svm import LinearSVC, SVC
-from sklearn.preprocessing import StandardScaler
-from sklearn.neural_network import MLPClassifier
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.base import BaseEstimator, ClassifierMixin
-from sklearn.utils.validation import check_is_fitted
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC, LinearSVC
 from sklearn.utils.multiclass import unique_labels
-
+from sklearn.utils.validation import check_is_fitted
+from torch.nn import functional
 
 __all__ = [
     "LogisticRegression",
