@@ -1,3 +1,4 @@
+import collections
 from abc import ABC, abstractmethod
 from typing import List
 
@@ -39,7 +40,7 @@ class ScalePreprocessor(Preprocessor):
         self.scaler = StandardScaler()
 
     def reshape_inp(self, X) -> np.ndarray:
-        X.reshape(-1, self.output_size)
+        return X.reshape(-1, self.output_size)
 
     def fit(self, X):
         return self.scaler.fit(self.reshape_inp(X))
