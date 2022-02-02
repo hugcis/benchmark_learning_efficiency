@@ -1,7 +1,6 @@
 import dataclasses
 import hashlib
 import json
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional, Tuple, Union
@@ -20,6 +19,7 @@ from reservoir_ca.decoders import (
     StandardScaler,
 )
 from reservoir_ca.esn_res import ESN
+from reservoir_ca.preprocessors import ConvPreprocessor, Preprocessor, ScalePreprocessor
 from reservoir_ca.tasks import BinarizedTask, Mask, Task, TokenTask
 
 
@@ -120,53 +120,6 @@ def group_by_lens(
         if masks is not None:
             grouped_masks.append([masks[n] for n, c in enumerate(seqs) if len(c) == l])
     return grouped_seqs, grouped_masks if masks is not None else None
-
-
-class Preprocessor(ABC):
-    @abstractmethod
-    def fit_transform(self, X):
-        del X
-
-    @abstractmethod
-    def transform(self, X):
-        del X
-
-
-class ConvPreprocessor(Preprocessor):
-    def __init__(self, r_height: int, state_size: int):
-        self.r_height = r_height
-        self.state_size = state_size
-
-    def reshape_vec(self, X: List[np.ndarray]):
-        return [v.reshape(-1, self.r_height, self.state_size) for v in X]
-
-    def fit(self, X):
-        return np.concatenate(self.reshape_vec(X), axis=0)
-
-    def transform(self, X):
-        return np.concatenate(self.reshape_vec(X), axis=0)
-
-    def fit_transform(self, X):
-        return np.concatenate(self.reshape_vec(X), axis=0)
-
-
-class ScalePreprocessor(Preprocessor):
-    def __init__(self, output_size):
-        self.output_size = output_size
-        self.scaler = StandardScaler()
-
-    def fit(self, X):
-        return self.scaler.fit(np.concatenate(X, axis=1).reshape(-1, self.output_size))
-
-    def transform(self, X):
-        return self.scaler.transform(
-            np.concatenate(X, axis=1).reshape(-1, self.output_size)
-        )
-
-    def fit_transform(self, X):
-        return self.scaler.fit_transform(
-            np.concatenate(X, axis=1).reshape(-1, self.output_size)
-        )
 
 
 Reservoir = Union[CAReservoir, ESN]
@@ -318,7 +271,8 @@ class Experiment:
         else:
             # Flatten inp and targets for training of SVM
             self.reg.fit(
-                preproc.fit_transform(all_data), np.concatenate(all_tgts, axis=0)
+                preproc.fit_transform(np.concatenate(all_data, axis=1)),
+                np.concatenate(all_tgts, axis=0),
             )
             return None
 
@@ -331,7 +285,7 @@ class Experiment:
 
         if return_target:
             return (
-                self.reg.predict(preproc.transform(all_data)),
+                self.reg.predict(preproc.transform(np.concatenate(all_data, axis=1))),
                 np.concatenate(all_tgts, axis=0),
             )
         else:
@@ -346,7 +300,8 @@ class Experiment:
         all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
 
         return self.reg.score(
-            preproc.transform(all_data), np.concatenate(all_tgts, axis=0)
+            preproc.transform(np.concatenate(all_data, axis=1)),
+            np.concatenate(all_tgts, axis=0),
         )
 
     def fit_with_eval(self) -> list[float]:
@@ -358,10 +313,12 @@ class Experiment:
             )
 
             if self.shuffle:
-                shuffle_index = np.random.permutation(all_data.shape[0])
-                all_data = all_data[shuffle_index]
+                all_data = np.concatenate(all_data, axis=1)
+                shuffle_index = np.random.permutation(all_data.shape[1])
+                all_data = all_data[:, shuffle_index, :]
                 all_tgts = np.concatenate(all_tgts, axis=0)[shuffle_index]
             else:
+                all_data = np.concatenate(all_data, axis=1)
                 all_tgts = np.concatenate(all_tgts, axis=0)
 
             all_data_test, all_tgts_test = self.process_tasks(
@@ -371,7 +328,7 @@ class Experiment:
             self.reg.fit(
                 preproc.fit_transform(all_data),
                 all_tgts,
-                X_t=preproc.transform(all_data_test),
+                X_t=preproc.transform(np.concatenate(all_data_test, axis=1)),
                 y_t=np.concatenate(all_tgts_test, axis=0),
             )
         else:
