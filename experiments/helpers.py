@@ -3,6 +3,8 @@ Helper function for running the experiments. Since all experiments will be
 run in parallel we use file locking to ensure that each write to the aggregated
 result file is atomic.
 """
+import os
+import logging
 from enum import Enum
 import sys
 from dataclasses import asdict
@@ -18,7 +20,13 @@ from tqdm import tqdm
 from reservoir_ca.ca_res import CAInput, CAReservoir, CARuleType, rule_array_from_int
 from reservoir_ca.esn_res import ESN
 from reservoir_ca.tasks import Task
-from reservoir_ca.experiment import ExpOptions, Experiment, ProjectionType, RegType, Reservoir
+from reservoir_ca.experiment import (
+    ExpOptions,
+    Experiment,
+    ProjectionType,
+    RegType,
+    Reservoir,
+)
 
 
 # This is a very hack-it-yourself way to implement file locking in Python. I
@@ -27,18 +35,26 @@ try:
     # Posix based file locking (Linux, Ubuntu, MacOS, etc.)
     #   Only allows locking on writable files, might cause
     #   strange results for reading.
-    import fcntl, os
+    import fcntl
+
     def lock_file(f):
-        if f.writable(): fcntl.lockf(f, fcntl.LOCK_EX)
+        if f.writable():
+            fcntl.lockf(f, fcntl.LOCK_EX)
+
     def unlock_file(f):
-        if f.writable(): fcntl.lockf(f, fcntl.LOCK_UN)
+        if f.writable():
+            fcntl.lockf(f, fcntl.LOCK_UN)
+
 except ModuleNotFoundError:
     # Windows file locking
-    import msvcrt, os
+    import msvcrts
+
     def file_size(f):
-        return os.path.getsize( os.path.realpath(f.name) )
+        return os.path.getsize(os.path.realpath(f.name))
+
     def lock_file(f):
         msvcrt.locking(f.fileno(), msvcrt.LK_RLCK, file_size(f))
+
     def unlock_file(f):
         msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, file_size(f))
 
@@ -52,6 +68,7 @@ class AtomicOpen:
 
     This file opener *must* be used in a "with" block.
     """
+
     def __init__(self, path, desc: str, *args, **kwargs):
         # Open the file and acquire a lock on the file before operating
         self.file = open(path, desc, *args, **kwargs)
@@ -59,7 +76,8 @@ class AtomicOpen:
         lock_file(self.file)
 
     # Return the opened file object (knowing a lock has been obtained).
-    def __enter__(self, *args, **kwargs): return self.file
+    def __enter__(self, *args, **kwargs):
+        return self.file
 
     # Unlock the file and close the file object.
     def __exit__(self, exc_type=None, exc_value=None, traceback=None):
@@ -72,16 +90,30 @@ class AtomicOpen:
         self.file.close()
         # Handle exceptions that may have come up during execution, by
         # default any exceptions are raised to the user.
-        if (exc_type != None): return False
-        else:                  return True
+        if exc_type is not None:
+            return False
+        else:
+            return True
+
 
 ENUM_CHOICES = {
-    "reg_type": ["linearsvm", "rbfsvm", "linear", "rbf", "mlp",
-                 "randomforest", "conv", "conv_mlp", "logistic",
-                 "sgd", "sgd_svm"],
+    "reg_type": [
+        "linearsvm",
+        "rbfsvm",
+        "linear",
+        "rbf",
+        "mlp",
+        "randomforest",
+        "conv",
+        "conv_mlp",
+        "logistic",
+        "sgd",
+        "sgd_svm",
+    ],
     "proj_type": ["one_to_one", "one_to_many", "one_to_pattern"],
-    "ca_rule_type": ["standard", "winput", "winputonce"]
+    "ca_rule_type": ["standard", "winput", "winputonce"],
 }
+
 
 def make_parser() -> argparse.ArgumentParser:
     """
@@ -99,11 +131,15 @@ def make_parser() -> argparse.ArgumentParser:
             continue
         elif isinstance(opts_dict[opt], Enum):
             choices = ENUM_CHOICES[opt]
-            parser.add_argument(f"--{opt}", default=choices[0],
-                                choices=choices, type=str)
+            parser.add_argument(
+                f"--{opt}", default=choices[0], choices=choices, type=str
+            )
         else:
-            parser.add_argument(f"--{opt}", default=vars(base_options).get(opt, None),
-                                type=type(opts_dict[opt]))
+            parser.add_argument(
+                f"--{opt}",
+                default=vars(base_options).get(opt, None),
+                type=type(opts_dict[opt]),
+            )
 
     parser.add_argument("--return-name", default=False, action="store_true")
     parser.add_argument("--increment-data", default=False, action="store_true")
@@ -113,6 +149,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-write", action="store_true", default=False)
     parser.add_argument("--exp_dirname", default=None, type=str)
     parser.add_argument("--esn_baseline", action="store_true", default=False)
+    parser.add_argument("--debug", action="store_true", default=False)
     return parser
 
 
@@ -134,24 +171,31 @@ ResultType = Tuple[Dict[int, list[float]], Optional[Dict[str, Dict[int, list[Any
 
 
 class Result:
-    """
-    A class to manage and update results for the experiments. The experiments are
-    run separately for different CA rules and stored in a dictionary `res`. This
-    dictionary has one list of scores for each rule.
+    """A class to manage and update results for the experiments.
 
-    Each parallel job has a separate `Result` instance which points to the results
-    file and hold a temporary copy of the current scores, updated with `res.update(score)`.
+    The experiments are run separately for different CA rules and stored in a
+    dictionary `res`. This dictionary has one list of scores for each rule.
 
-    When finished, the scores can be flushed in a thread-safe way to the results file with
-    `res.save()`.
+    Each parallel job has a separate `Result` instance which points to the
+    results file and hold a temporary copy of the current scores, updated with
+    `res.update(score)`.
+
+    When finished, the scores can be flushed in a thread-safe way to the results
+    file with `res.save()`.
+
     """
+
     res: Dict[int, list[float]]
     res_extra: Dict[str, Dict[int, list[Any]]]
 
-    def __init__(self, path: pathlib.Path, opts_path: pathlib.Path,
-                 counts_path: pathlib.Path,
-                 path_extra: Optional[pathlib.Path] = None,
-                 no_write: bool = False):
+    def __init__(
+        self,
+        path: pathlib.Path,
+        opts_path: pathlib.Path,
+        counts_path: pathlib.Path,
+        path_extra: Optional[pathlib.Path] = None,
+        no_write: bool = False,
+    ):
         self.path = path
         self.opts_path = opts_path
         self.counts_path = counts_path
@@ -179,8 +223,8 @@ class Result:
         self.res_extra[prefix][rule].append(result)
 
     def save(self) -> ResultType:
-        """ Flush the current results to disk. """
-        added_values = {}
+        """Flush the current results to disk."""
+        added_values: Dict[int, int] = {}
         if not self.no_write:
             for r in self.res:
                 added_values[r] = added_values.get(r, 0) + len(self.res[r])
@@ -224,9 +268,9 @@ class Result:
             return None
 
     def read(self) -> Dict[int, int]:
-        """
-        Reads and returns the current state of the results dictionary. This will not change or
-        flush the current results to disk.
+        """Reads and returns the current state of the results dictionary. This
+        will not change or flush the current results to disk.
+
         """
         if self.counts_path.exists():
             with AtomicOpen(self.counts_path, "rb") as f:
@@ -239,20 +283,14 @@ class Result:
 InitExp = Tuple[Result, ExpOptions, List[int], Type[Reservoir]]
 
 
-def init_exp(name: str, opts_extra: Dict[str, Any],
-             rules: Optional[list[int]] = None,
-             exp_dirname: str = "experiment_results") -> InitExp:
-    """
-    Initialize an experiment. This will read the command line arguments as well as the
-    optional extra options and return a Result object, the experiment options as well as
-    the list of rules to be processed.
-    """
-    parser = make_parser()
-    args = parser.parse_args()
-    opts = ExpOptions()
-    if rules is None:
-        rules = [int(i) for i in args.rules]
+def init_logging(debug):
+    log_level = os.environ.get("LOGLEVEL", "INFO")
+    if debug:
+        log_level = "DEBUG"
+    logging.basicConfig(level=log_level)
 
+
+def set_opts_from_args(opts: ExpOptions, args: argparse.Namespace) -> ExpOptions:
     for p in vars(opts):
         if p == "reg_type":
             opts.reg_type = RegType.from_str(args.reg_type)
@@ -262,6 +300,31 @@ def init_exp(name: str, opts_extra: Dict[str, Any],
             opts.ca_rule_type = CARuleType[args.ca_rule_type.upper()]
         elif p in vars(args):
             setattr(opts, p, vars(args)[p])
+
+    return opts
+
+
+def init_exp(
+    name: str,
+    opts_extra: Dict[str, Any],
+    rules: Optional[list[int]] = None,
+    exp_dirname: str = "experiment_results",
+) -> InitExp:
+    """
+    Initialize an experiment. This will read the command line arguments as well as the
+    optional extra options and return a Result object, the experiment options as well as
+    the list of rules to be processed.
+    """
+
+    parser = make_parser()
+    args = parser.parse_args()
+    init_logging(args.debug)
+
+    opts = ExpOptions()
+
+    if rules is None:
+        rules = [int(i) for i in args.rules]
+    opts = set_opts_from_args(opts, args)
 
     # opts_extra overwrites the command line arguments
     for k, v in opts_extra.items():
@@ -317,6 +380,14 @@ def init_exp(name: str, opts_extra: Dict[str, Any],
     random.seed(seed)
     np.random.seed(seed)
 
+    ca_class, rules = get_ca_class(args, opts, rules)
+
+    return res, opts, rules, ca_class
+
+
+def get_ca_class(
+    args: argparse.Namespace, opts: ExpOptions, rules: list[int]
+) -> Tuple[Reservoir, list[int]]:
     if args.esn_baseline:
         ca_class = ESN
         rules = [-1]
@@ -326,37 +397,45 @@ def init_exp(name: str, opts_extra: Dict[str, Any],
         ca_class = CAInput
     else:
         raise ValueError(f"Incorrect CA rule type {opts.ca_rule_type}")
+    return ca_class, rules
 
-    return res, opts, rules, ca_class
 
-
-def make_ca_reservoir(ca_class: Type[CAReservoir], t: int,
-                      exp: Experiment,
-                      opts: ExpOptions) -> Reservoir:
-    ca = ca_class(t, exp.task.output_dimension(),
-                    redundancy=opts.redundancy,
-                    r_height=opts.r_height,
-                    proj_factor=opts.proj_factor,
-                    proj_type=opts.proj_type,
-                    proj_pattern=opts.proj_pattern)
+def make_ca_reservoir(
+    ca_class: Type[CAReservoir], t: int, exp: Experiment, opts: ExpOptions
+) -> Reservoir:
+    ca = ca_class(
+        t,
+        exp.task.output_dimension(),
+        redundancy=opts.redundancy,
+        r_height=opts.r_height,
+        proj_factor=opts.proj_factor,
+        proj_type=opts.proj_type,
+        proj_pattern=opts.proj_pattern,
+    )
     if opts.ca_rule_type == CARuleType.WINPUTONCE and isinstance(ca, CAInput):
         ca.use_input_once = True
     return ca
 
 
-def make_esn_reservoir(esn_class: Type[ESN], exp: Experiment,
-                       opts: ExpOptions) -> Reservoir:
-    esn = esn_class(exp.task.output_dimension(),
-                    redundancy=opts.redundancy,
-                    r_height=opts.r_height,
-                    proj_factor=opts.proj_factor)
+def make_esn_reservoir(
+    esn_class: Type[ESN], exp: Experiment, opts: ExpOptions
+) -> Reservoir:
+    esn = esn_class(
+        exp.task.output_dimension(),
+        redundancy=opts.redundancy,
+        r_height=opts.r_height,
+        proj_factor=opts.proj_factor,
+    )
     return esn
 
 
-def run_task(task_cls: Type[Task], cls_args: List[Any],
-             opts_extra: Dict[str, Any] = {},
-             fname: Optional[str] = None,
-             rules: Optional[List[int]] = None) -> ResultType:
+def run_task(
+    task_cls: Type[Task],
+    cls_args: List[Any],
+    opts_extra: Dict[str, Any] = {},
+    fname: Optional[str] = None,
+    rules: Optional[List[int]] = None,
+) -> ResultType:
     """
     This function runs an experiment specified by its task, options and
     optional name for the output.
@@ -389,19 +468,23 @@ def run_task(task_cls: Type[Task], cls_args: List[Any],
 
 
 class RuleOptimizer:
-    def __init__(self, task_cls: Type[Task], cls_args: List[Any],
-                 opts_extra: Dict[str, Any] = {},
-                 initial_rule: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        task_cls: Type[Task],
+        cls_args: List[Any],
+        opts_extra: Dict[str, Any] = {},
+        initial_rule: Optional[int] = None,
+    ) -> None:
         self.task_cls = task_cls
         self.cls_args = cls_args
         self.opts_extra = opts_extra
 
         if initial_rule is None:
-            self.initial_rule = rule_array_from_int(np.random.randint(256), 1,
-                                                    check_input=True)
+            self.initial_rule = rule_array_from_int(
+                np.random.randint(256), 1, check_input=True
+            )
         else:
-            self.initial_rule = rule_array_from_int(initial_rule, 1,
-                                                    check_input=True)
+            self.initial_rule = rule_array_from_int(initial_rule, 1, check_input=True)
 
     def mutate_rule(self) -> list[list[int]]:
 

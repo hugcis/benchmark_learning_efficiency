@@ -11,9 +11,16 @@ import numpy as np
 from reservoir_ca.tasks import BinarizedTask, Task, TokenTask, Mask
 from reservoir_ca.esn_res import ESN
 from reservoir_ca.ca_res import CAReservoir, CARuleType, ProjectionType
-from reservoir_ca.decoders import (LinearSVC, SVC, SGDCls, StandardScaler,
-                                   MLPClassifier, RandomForestClassifier,
-                                   ConvClassifier, LogisticRegression)
+from reservoir_ca.decoders import (
+    LinearSVC,
+    SVC,
+    SGDCls,
+    StandardScaler,
+    MLPClassifier,
+    RandomForestClassifier,
+    ConvClassifier,
+    LogisticRegression,
+)
 
 
 class RegType(Enum):
@@ -47,7 +54,7 @@ class RegType(Enum):
             raise NotImplementedError
 
     def __str__(self):
-        return '%s' % self.name
+        return "%s" % self.name
 
 
 @dataclass
@@ -97,12 +104,13 @@ class ExpOptions:
 def to_dim_one_hot(data, out_dim):
     return np.eye(out_dim)[data]
 
+
 GroupedMasks = List[List[List[int]]]
 NumTaskType = List[List[int]]
 
+
 def group_by_lens(
-        seqs: NumTaskType,
-        masks: Mask = None
+    seqs: NumTaskType, masks: Mask = None
 ) -> Tuple[List[np.ndarray], Optional[GroupedMasks]]:
     lens = set(len(c) for c in seqs)
     grouped_seqs = []
@@ -122,6 +130,7 @@ class Preprocessor(ABC):
     @abstractmethod
     def transform(self, X):
         del X
+
 
 class ConvPreprocessor(Preprocessor):
     def __init__(self, r_height: int, state_size: int):
@@ -150,10 +159,14 @@ class ScalePreprocessor(Preprocessor):
         return self.scaler.fit(np.concatenate(X, axis=1).reshape(-1, self.output_size))
 
     def transform(self, X):
-        return self.scaler.transform(np.concatenate(X, axis=1).reshape(-1, self.output_size))
+        return self.scaler.transform(
+            np.concatenate(X, axis=1).reshape(-1, self.output_size)
+        )
 
     def fit_transform(self, X):
-        return self.scaler.fit_transform(np.concatenate(X, axis=1).reshape(-1, self.output_size))
+        return self.scaler.fit_transform(
+            np.concatenate(X, axis=1).reshape(-1, self.output_size)
+        )
 
 
 Reservoir = Union[CAReservoir, ESN]
@@ -164,15 +177,19 @@ class Experiment:
     preproc: Optional[Preprocessor] = None
     task: Task
 
-    def __init__(self, task: Task, exp_options: ExpOptions = ExpOptions(),
-                 ca: Optional[Reservoir] = None):
+    def __init__(
+        self,
+        task: Task,
+        exp_options: ExpOptions = ExpOptions(),
+        ca: Optional[Reservoir] = None,
+    ):
         self.opts = exp_options
         if ca is not None:
             self.set_ca(ca)
         if exp_options.reg_type == RegType.LINEARSVM:
-            self.reg = LinearSVC(dual=False, C=1., max_iter=100)
+            self.reg = LinearSVC(dual=False, C=1.0, max_iter=100)
         elif exp_options.reg_type == RegType.RBFSVM:
-            self.reg = SVC(kernel="rbf", C=1.)
+            self.reg = SVC(kernel="rbf", C=1.0)
         elif exp_options.reg_type == RegType.MLP:
             self.reg = MLPClassifier(hidden_layer_sizes=(100, 200, 100))
         elif exp_options.reg_type == RegType.RANDOMFOREST:
@@ -192,27 +209,32 @@ class Experiment:
             raise ValueError("Task cannot be binarized")
         else:
             self.task = task
-        tasks, masks = self.task.generate_tasks(seq_len=exp_options.seq_len,
-                                                max_n_seq=exp_options.max_n_seq)
+        tasks, masks = self.task.generate_tasks(
+            seq_len=exp_options.seq_len, max_n_seq=exp_options.max_n_seq
+        )
 
         self.dic = {d: n for n, d in enumerate(self.task.dictionary)}
 
         # Split into a training and testing set
         split = np.random.permutation(range(len(tasks)))
-        train_seqs = [[self.dic[k] for k in tasks[i]]
-                      for i in split[:int(.8 * len(tasks))]]
-        test_seqs = [[self.dic[k] for k in tasks[i]]
-                     for i in split[int(.8 * len(tasks)):]]
+        train_seqs = [
+            [self.dic[k] for k in tasks[i]] for i in split[: int(0.8 * len(tasks))]
+        ]
+        test_seqs = [
+            [self.dic[k] for k in tasks[i]] for i in split[int(0.8 * len(tasks)) :]
+        ]
 
         # For masked tasks compute masks
         if masks is not None and not self.opts.ignore_mask:
-            train_masks = [masks[i] for i in split[:int(.8 * len(tasks))]]
-            test_masks = [masks[i] for i in split[int(.8 * len(tasks)):]]
+            train_masks = [masks[i] for i in split[: int(0.8 * len(tasks))]]
+            test_masks = [masks[i] for i in split[int(0.8 * len(tasks)) :]]
         else:
             train_masks, test_masks = None, None
 
         # Group sequences by lengths for batch processing
-        self.training_tasks, self.training_masks = group_by_lens(train_seqs, train_masks)
+        self.training_tasks, self.training_masks = group_by_lens(
+            train_seqs, train_masks
+        )
         self.testing_tasks, self.testing_masks = group_by_lens(test_seqs, test_masks)
 
     @property
@@ -228,8 +250,7 @@ class Experiment:
         assert self.ca is not None
         if current_size is None or self.ca.state_size != current_size:
             if self.opts.reg_type == RegType.CONV_MLP:
-                self.preproc = ConvPreprocessor(self.opts.r_height,
-                                                self.ca.state_size)
+                self.preproc = ConvPreprocessor(self.opts.r_height, self.ca.state_size)
             else:
                 self.preproc = ScalePreprocessor(self.ca.output_size)
 
@@ -240,8 +261,7 @@ class Experiment:
             return self.ca, self.preproc
 
     def process_tasks(
-            self, tasks: List[np.ndarray],
-            masks: Optional[GroupedMasks] = None
+        self, tasks: List[np.ndarray], masks: Optional[GroupedMasks] = None
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         ca, _ = self.check_ca()
         all_data = []
@@ -256,23 +276,22 @@ class Experiment:
                 if masks is not None:
                     for q in range(output.shape[0]):
                         if t + 1 in masks[l_idx][q]:
-                            single_length_data.append(output[q:q+1, None, :, :])
-                            single_length_tgts.append(task_l[q:q+1, t + 1])
+                            single_length_data.append(output[q : q + 1, None, :, :])
+                            single_length_tgts.append(task_l[q : q + 1, t + 1])
                 else:
                     single_length_data.append(output[:, None, :, :])
             if masks is None:
                 single_length_tgts_arr = task_l[:, 1:].reshape(-1)
             else:
                 single_length_data = np.concatenate(single_length_data, axis=0)
-                single_length_tgts_arr = np.concatenate(single_length_tgts,
-                                                        axis=0)
+                single_length_tgts_arr = np.concatenate(single_length_tgts, axis=0)
 
             all_data.append(np.concatenate(single_length_data, axis=1))
             all_tgts.append(single_length_tgts_arr)
         return all_data, all_tgts
 
     def fit(
-            self, return_data=False
+        self, return_data=False
     ) -> Optional[Tuple[List[np.ndarray], List[np.ndarray]]]:
         """Fit the experiments' regressor on the training and testing data of its task.
 
@@ -281,40 +300,57 @@ class Experiment:
         as well as the targets.
         """
         ca, preproc = self.check_ca()
-        all_data, all_tgts = self.process_tasks(self.training_tasks,
-                                                self.training_masks)
+        all_data, all_tgts = self.process_tasks(
+            self.training_tasks, self.training_masks
+        )
 
         if return_data:
-            inp = [all_data[c].reshape(len(task_l), -1, ca.state_size)
-                   for c, task_l in enumerate(self.training_tasks)]
-            tgts = [all_tgts[c].reshape(len(task_l), -1)
-                   for c, task_l in enumerate(self.training_tasks)]
+            inp = [
+                all_data[c].reshape(len(task_l), -1, ca.state_size)
+                for c, task_l in enumerate(self.training_tasks)
+            ]
+            tgts = [
+                all_tgts[c].reshape(len(task_l), -1)
+                for c, task_l in enumerate(self.training_tasks)
+            ]
             return inp, tgts
         else:
             # Flatten inp and targets for training of SVM
-            self.reg.fit(preproc.fit_transform(all_data),
-                         np.concatenate(all_tgts, axis=0))
+            self.reg.fit(
+                preproc.fit_transform(all_data), np.concatenate(all_tgts, axis=0)
+            )
             return None
+
+    def predict_test(self) -> np.ndarray:
+        _, preproc = self.check_ca()
+        all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
+
+        return self.reg.predict(preproc.transform(all_data))
 
     def eval_test(self) -> float:
         _, preproc = self.check_ca()
         all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
 
-        return self.reg.score(preproc.transform(all_data),
-                              np.concatenate(all_tgts, axis=0))
+        return self.reg.score(
+            preproc.transform(all_data), np.concatenate(all_tgts, axis=0)
+        )
 
     def fit_with_eval(self):
         if isinstance(self.reg, SGDCls):
             _, preproc = self.check_ca()
-            all_data, all_tgts = self.process_tasks(self.training_tasks,
-                                                    self.training_masks)
-            all_data_test, all_tgts_test = self.process_tasks(self.testing_tasks,
-                                                            self.testing_masks)
+            all_data, all_tgts = self.process_tasks(
+                self.training_tasks, self.training_masks
+            )
+            all_data_test, all_tgts_test = self.process_tasks(
+                self.testing_tasks, self.testing_masks
+            )
             # At this point self.reg can only be of SGD type
-            self.reg.fit(preproc.fit_transform(all_data),
-                         np.concatenate(all_tgts, axis=0),
-                         X_t=preproc.transform(all_data_test),
-                         y_t=np.concatenate(all_tgts_test, axis=0))
+            self.reg.fit(
+                preproc.fit_transform(all_data),
+                np.concatenate(all_tgts, axis=0),
+                X_t=preproc.transform(all_data_test),
+                y_t=np.concatenate(all_tgts_test, axis=0),
+            )
         else:
             raise ValueError("Regressor type should be SGD")
 

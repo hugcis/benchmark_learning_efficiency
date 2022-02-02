@@ -7,12 +7,10 @@ Mask = Optional[List[List[int]]]
 TaskMask = Tuple[TaskType, Mask]
 
 
-def choose_minimal_set(tasks: TaskType, max_n_seq: int,
-                       mask: Mask = None) -> TaskMask:
+def choose_minimal_set(tasks: TaskType, max_n_seq: int, mask: Mask = None) -> TaskMask:
     """Select `max_n_seq` random task/mask pairs from a list."""
     if len(tasks) > max_n_seq:
-        idx = np.random.choice(range(len(tasks)), size=max_n_seq,
-                               replace=False)
+        idx = np.random.choice(range(len(tasks)), size=max_n_seq, replace=False)
         if mask is not None:
             return_mask = [mask[i] for i in idx]
         else:
@@ -60,16 +58,17 @@ class Task(ABC):
 
 
 class HybridTask(Task):
-    def __init__(self, named_tasks: Dict[str, Type[Task]],
-                 task_args: Dict[str, List[Any]]):
+    def __init__(
+        self, named_tasks: Dict[str, Type[Task]], task_args: Dict[str, List[Any]]
+    ):
         self.named_tasks = {}
         # With this, we create a new instance of each subtask every time we
         # create a new HybridTask
         for n in named_tasks:
             self.named_tasks[n] = named_tasks[n](*task_args.get(n, []))
         super().__init__(
-            "hyb_{}".format("_".join(t.name
-                                     for t in self.named_tasks.values())))
+            "hyb_{}".format("_".join(t.name for t in self.named_tasks.values()))
+        )
 
         # The dictionary is the union of all subtask dictionaries
         set_dictionary = set()
@@ -84,7 +83,8 @@ class HybridTask(Task):
         max_n_per_task = max_n_seq // len(self.named_tasks)
         for n in self.named_tasks:
             task, mask = self.named_tasks[n].generate_tasks(
-                max_n_seq=max_n_per_task, **kwargs)
+                max_n_seq=max_n_per_task, **kwargs
+            )
             res = res + task
             # TODO Take care of cases where some tasks have masks and others
             # don't
@@ -107,8 +107,12 @@ class BinaryTask(Task):
 class TokenTask(Task):
     """A task with tokens."""
 
-    def __init__(self, name: str, lengths: Union[int, List[int]],
-                 dictionary: Sequence[str] = ["A", "B", "C"]):
+    def __init__(
+        self,
+        name: str,
+        lengths: Union[int, List[int]],
+        dictionary: Sequence[str] = ["A", "B", "C"],
+    ):
         super().__init__(name)
         self.dictionary = list(dictionary)
         self.set_lengths(lengths)
@@ -125,24 +129,22 @@ class BinarizedTask(Task):
         self.enc_size = int(np.ceil(np.log2(len(self.base_task.dictionary))))
         formatter = f"{{:0{self.enc_size}b}}"
         self.mapping = {
-            d: formatter.format(n)
-            for n, d in enumerate(self.base_task.dictionary)
+            d: formatter.format(n) for n, d in enumerate(self.base_task.dictionary)
         }
 
     def convert_to_binary(self, task: TaskType, mask: Mask) -> TaskMask:
         task = [[c for g in t for c in self.mapping[g]] for t in task]
         if mask is not None:
-            ret_mask = [[self.enc_size * c + i
-                         for i in range(self.enc_size)
-                         for c in m]
-                        for m in mask]
+            ret_mask = [
+                [self.enc_size * c + i for i in range(self.enc_size) for c in m]
+                for m in mask
+            ]
         else:
             ret_mask = None
         return task, ret_mask
 
     def generate_tasks(self, max_n_seq: int, **kwargs) -> TaskMask:
-        task, mask = self.base_task.generate_tasks(max_n_seq=max_n_seq,
-                                                   **kwargs)
+        task, mask = self.base_task.generate_tasks(max_n_seq=max_n_seq, **kwargs)
         return self.convert_to_binary(task, mask)
 
 

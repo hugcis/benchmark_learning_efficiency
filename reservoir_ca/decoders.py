@@ -16,6 +16,17 @@ from sklearn.utils.validation import check_is_fitted
 from sklearn.utils.multiclass import unique_labels
 
 
+__all__ = [
+    "LogisticRegression",
+    "SGDClassifier",
+    "LinearSVC",
+    "SVC",
+    "StandardScaler",
+    "MLPClassifier",
+    "RandomForestClassifier",
+]
+
+
 class ExperimentData(torch.utils.data.Dataset):
     def __init__(self, X, y):
         self.X = X
@@ -25,14 +36,18 @@ class ExperimentData(torch.utils.data.Dataset):
         return self.X.shape[0]
 
     def __getitem__(self, idx):
-        return self.X[idx,:], self.y[idx]
+        return self.X[idx, :], self.y[idx]
 
 
 class ConvNetwork(nn.Module):
-    def __init__(self, channels: Sequence[int], inp_dim: int,
-                 out_dim: int,
-                 kernel_sizes: Optional[Sequence[int]] = None,
-                 avg_pool: bool = True) -> None:
+    def __init__(
+        self,
+        channels: Sequence[int],
+        inp_dim: int,
+        out_dim: int,
+        kernel_sizes: Optional[Sequence[int]] = None,
+        avg_pool: bool = True,
+    ) -> None:
         super().__init__()
 
         self.avg_pool = avg_pool
@@ -72,14 +87,20 @@ class OptType(Enum):
 class ConvClassifier(BaseEstimator, ClassifierMixin):
     conv_network: Optional[ConvNetwork]
 
-    def __init__(self, channels: Sequence[int], verbose: bool = False,
-                 opt_type: OptType = OptType.ADAM):
+    def __init__(
+        self,
+        channels: Sequence[int],
+        verbose: bool = False,
+        opt_type: OptType = OptType.ADAM,
+    ):
         self.conv_network = None
         self.channels = list(channels)
         self.verbose = verbose
         self.opt_type = opt_type
 
-    def fit(self, X, y, batch_size: Optional[int] = None, epochs: int = 10) -> "ConvClassifier":
+    def fit(
+        self, X, y, batch_size: Optional[int] = None, epochs: int = 10
+    ) -> "ConvClassifier":
         # Check classes
         self.classes_ = unique_labels(y)
         self.inverse_classes_ = np.zeros(self.classes_.max() + 1, dtype=int)
@@ -118,6 +139,7 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
         ct = 0
         running_err = 0
         for inp, target in data_loader:
+
             def closure():
                 if torch.is_grad_enabled():
                     optimizer.zero_grad()
@@ -132,7 +154,7 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
 
             optimizer.step(closure)
 
-            running_err += (closure().item())
+            running_err += closure().item()
             ct += 1
         if self.verbose:
             print(f"Epoch {ep}, error is {running_err / ct}")
@@ -155,8 +177,7 @@ class SGDCls(BaseEstimator, ClassifierMixin):
         self.sgd = SGDClassifier(learning_rate="constant", eta0=0.001, alpha=0.001)
         self.test_values: List[float] = []
 
-    def fit(self, X, y, X_t=None, y_t=None,
-            batch_size: int = 16) -> "SGDCls":
+    def fit(self, X, y, X_t=None, y_t=None, batch_size: int = 16) -> "SGDCls":
         self.test_values = []
         # Check classes
         self.classes_ = unique_labels(y)
@@ -169,7 +190,7 @@ class SGDCls(BaseEstimator, ClassifierMixin):
         self.test_values.append(self.sgd.score(X_t, y_t))
 
         for i in range(0, X.shape[0], batch_size):
-            batch_X, batch_y = X[i:i + batch_size], y[i:i + batch_size]
+            batch_X, batch_y = X[i : i + batch_size], y[i : i + batch_size]
             self.sgd.partial_fit(batch_X, batch_y, classes=classes)
             if X_t is not None and y_t is not None:
                 self.test_values.append(self.sgd.score(X_t, y_t))
