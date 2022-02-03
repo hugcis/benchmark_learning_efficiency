@@ -1,4 +1,3 @@
-import collections
 from abc import ABC, abstractmethod
 from typing import List
 
@@ -8,11 +7,11 @@ from sklearn.preprocessing import StandardScaler
 
 class Preprocessor(ABC):
     @abstractmethod
-    def fit_transform(self, X):
+    def fit_transform(self, X: np.ndarray):
         del X
 
     @abstractmethod
-    def transform(self, X):
+    def transform(self, X: np.ndarray):
         del X
 
 

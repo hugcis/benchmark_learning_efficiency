@@ -1,9 +1,10 @@
+import logging
 import dataclasses
 import hashlib
 import json
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict
 
 import numpy as np
 
@@ -16,11 +17,10 @@ from reservoir_ca.decoders import (
     MLPClassifier,
     RandomForestClassifier,
     SGDCls,
-    StandardScaler,
 )
 from reservoir_ca.esn_res import ESN
 from reservoir_ca.preprocessors import ConvPreprocessor, Preprocessor, ScalePreprocessor
-from reservoir_ca.tasks import BinarizedTask, Mask, Task, TokenTask
+from reservoir_ca.tasks import BinarizedTask, Mask, Task, TokenTask, TaskType
 
 
 class RegType(Enum):
@@ -115,14 +115,34 @@ def group_by_lens(
     lens = set(len(c) for c in seqs)
     grouped_seqs = []
     grouped_masks = []
-    for l in lens:
-        grouped_seqs.append(np.array([c for c in seqs if len(c) == l]))
+    for length in lens:
+        grouped_seqs.append(np.array([c for c in seqs if len(c) == length]))
         if masks is not None:
-            grouped_masks.append([masks[n] for n, c in enumerate(seqs) if len(c) == l])
+            grouped_masks.append(
+                [masks[n] for n, c in enumerate(seqs) if len(c) == length]
+            )
     return grouped_seqs, grouped_masks if masks is not None else None
 
 
 Reservoir = Union[CAReservoir, ESN]
+
+
+def get_train_test_split(
+    tasks: TaskType, masks: Mask, dic: Dict[str, int], ignore_mask: bool
+) -> Tuple[NumTaskType, Mask, NumTaskType, Mask]:
+    # Split into a training and testing set
+    split = np.random.permutation(range(len(tasks)))
+    train_seqs = [[dic[k] for k in tasks[i]] for i in split[: int(0.8 * len(tasks))]]
+    test_seqs = [[dic[k] for k in tasks[i]] for i in split[int(0.8 * len(tasks)) :]]
+
+    # For masked tasks compute masks
+    if masks is not None and not ignore_mask:
+        train_masks = [masks[i] for i in split[: int(0.8 * len(tasks))]]
+        test_masks = [masks[i] for i in split[int(0.8 * len(tasks)) :]]
+    else:
+        train_masks, test_masks = None, None
+
+    return train_seqs, train_masks, test_seqs, test_masks
 
 
 class Experiment:
@@ -138,7 +158,7 @@ class Experiment:
     ):
         self.opts = exp_options
         if ca is not None:
-            self.set_ca(ca)
+            self.set_reservoir(ca)
         if exp_options.reg_type == RegType.LINEARSVM:
             self.reg = LinearSVC(dual=False, C=1.0, max_iter=100)
         elif exp_options.reg_type == RegType.RBFSVM:
@@ -153,6 +173,8 @@ class Experiment:
             self.reg = LogisticRegression(C=1.0, solver="liblinear")
         elif exp_options.reg_type == RegType.SGDCLS:
             self.reg = SGDCls()
+        else:
+            raise ValueError(f"Unknown regression type {exp_options.reg_type}")
 
         self.preproc = None
 
@@ -168,21 +190,9 @@ class Experiment:
 
         self.dic = {d: n for n, d in enumerate(self.task.dictionary)}
 
-        # Split into a training and testing set
-        split = np.random.permutation(range(len(tasks)))
-        train_seqs = [
-            [self.dic[k] for k in tasks[i]] for i in split[: int(0.8 * len(tasks))]
-        ]
-        test_seqs = [
-            [self.dic[k] for k in tasks[i]] for i in split[int(0.8 * len(tasks)) :]
-        ]
-
-        # For masked tasks compute masks
-        if masks is not None and not self.opts.ignore_mask:
-            train_masks = [masks[i] for i in split[: int(0.8 * len(tasks))]]
-            test_masks = [masks[i] for i in split[int(0.8 * len(tasks)) :]]
-        else:
-            train_masks, test_masks = None, None
+        train_seqs, train_masks, test_seqs, test_masks = get_train_test_split(
+            tasks, masks, self.dic, self.opts.ignore_mask
+        )
 
         # Group sequences by lengths for batch processing
         self.training_tasks, self.training_masks = group_by_lens(
@@ -195,7 +205,7 @@ class Experiment:
     def output_dim(self) -> int:
         return self.task.output_dimension()
 
-    def set_ca(self, ca: Reservoir):
+    def set_reservoir(self, ca: Reservoir):
         if self.ca is not None:
             current_size = self.ca.state_size
         else:
@@ -210,7 +220,7 @@ class Experiment:
 
     def check_ca(self) -> Tuple[Reservoir, Preprocessor]:
         if self.ca is None or self.preproc is None:
-            raise ValueError("Must initialize ca with method `set_ca`")
+            raise ValueError("Must initialize reservoir with method `set_reservoir`")
         else:
             return self.ca, self.preproc
 
@@ -239,16 +249,27 @@ class Experiment:
                             single_length_data.append(output[q : q + 1, None, :, :])
                             single_length_tgts.append(task_l[q : q + 1, t + 1])
                 else:
+                    # Just add the whole output if not masking
                     single_length_data.append(output[:, None, :, :])
+
             if masks is None:
-                single_length_tgts_arr = task_l[:, 1:].reshape(-1)
+                single_length_data_arr = np.concatenate(single_length_data, axis=1)
+                single_length_tgts_arr = task_l[:, 1:]
             else:
-                single_length_data = np.concatenate(single_length_data, axis=0)
+                single_length_data_arr = np.concatenate(single_length_data, axis=0)
                 single_length_tgts_arr = np.concatenate(single_length_tgts, axis=0)
-            all_data.append(single_length_data)
+
+            all_data.append(single_length_data_arr)
             all_tgts.append(single_length_tgts_arr)
-        # all_data is a list of vectors of shape (n_example x 1 x r_height x state_size)
+
+        # all_data is a list of vectors of shape (n_example x 1 x r_height x
+        # state_size) if masked and (n_example x length_grp x r_height x
+        # state_size) if not masked
         return all_data, all_tgts
+
+    def shape_for_preproc(self, all_data: list[np.ndarray]) -> np.ndarray:
+        dt_list = [c.reshape(-1, c.shape[-2], c.shape[-1]) for c in all_data]
+        return np.concatenate(dt_list, axis=0)
 
     def fit(
         self, return_data=False
@@ -277,8 +298,8 @@ class Experiment:
         else:
             # Flatten inp and targets for training of SVM
             self.reg.fit(
-                preproc.fit_transform(np.concatenate(all_data, axis=0)),
-                np.concatenate(all_tgts, axis=0),
+                preproc.fit_transform(self.shape_for_preproc(all_data)),
+                np.concatenate([c.reshape(-1) for c in all_tgts], axis=0),
             )
             return None
 
@@ -288,14 +309,16 @@ class Experiment:
         """Output the test set predictions for that experiment."""
         _, preproc = self.check_ca()
         all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
-
+        prediction = self.reg.predict(
+            preproc.transform(self.shape_for_preproc(all_data))
+        )
         if return_target:
             return (
-                self.reg.predict(preproc.transform(np.concatenate(all_data, axis=0))),
-                np.concatenate(all_tgts, axis=0),
+                prediction,
+                np.concatenate([c.reshape(-1) for c in all_tgts], axis=0),
             )
         else:
-            return self.reg.predict(preproc.transform(all_data))
+            return prediction
 
     def eval_test(self) -> float:
         """Output the test set scores for that experiment, as computed by the
@@ -307,7 +330,7 @@ class Experiment:
 
         return self.reg.score(
             preproc.transform(np.concatenate(all_data, axis=0)),
-            np.concatenate(all_tgts, axis=0),
+            np.concatenate([c.reshape(-1) for c in all_tgts], axis=0),
         )
 
     def fit_with_eval(self) -> list[float]:
@@ -319,23 +342,25 @@ class Experiment:
             )
 
             if self.shuffle:
-                all_data = np.concatenate(all_data, axis=0)
-                shuffle_index = np.random.permutation(all_data.shape[0])
-                all_data = all_data[shuffle_index, :]
-                all_tgts = np.concatenate(all_tgts, axis=0)[shuffle_index]
+                all_data_arr = self.shape_for_preproc(all_data)
+                shuffle_index = np.random.permutation(all_data_arr.shape[0])
+                all_data = all_data_arr[shuffle_index, :]
+                all_tgts = np.concatenate([c.reshape(-1) for c in all_tgts], axis=0)[
+                    shuffle_index
+                ]
             else:
-                all_data = np.concatenate(all_data, axis=0)
-                all_tgts = np.concatenate(all_tgts, axis=0)
+                all_data_arr = self.shape_for_preproc(all_data)
+                all_tgts = np.concatenate([c.reshape(-1) for c in all_tgts], axis=0)
 
             all_data_test, all_tgts_test = self.process_tasks(
                 self.testing_tasks, self.testing_masks
             )
             # At this point self.reg can only be of SGD type
             self.reg.fit(
-                preproc.fit_transform(all_data),
+                preproc.fit_transform(all_data_arr),
                 all_tgts,
-                X_t=preproc.transform(np.concatenate(all_data_test, axis=0)),
-                y_t=np.concatenate(all_tgts_test, axis=0),
+                X_t=preproc.transform(self.shape_for_preproc(all_data_test)),
+                y_t=np.concatenate([c.reshape(-1) for c in all_tgts_test], axis=0),
             )
         else:
             raise ValueError("Regressor type should be SGD to evaluate during fit")

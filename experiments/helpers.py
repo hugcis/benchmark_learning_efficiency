@@ -7,12 +7,11 @@ import argparse
 import logging
 import os
 import pathlib
-import pickle as pkl
 import random
 import sys
 from dataclasses import asdict
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import numpy as np
 from reservoir_ca.ca_res import CAInput, CAReservoir, CARuleType, rule_array_from_int
@@ -24,75 +23,15 @@ from reservoir_ca.experiment import (
     RegType,
     Reservoir,
 )
+from reservoir_ca.rnn_experiment import RNNExperiment
+from reservoir_ca.standard_recurrent import RNN
 from reservoir_ca.tasks import Task
 from tqdm import tqdm
 
-# This is a very hack-it-yourself way to implement file locking in Python. I
-# would prefer a proper library
-try:
-    # Posix based file locking (Linux, Ubuntu, MacOS, etc.)
-    #   Only allows locking on writable files, might cause
-    #   strange results for reading.
-    import fcntl
+from .result import Result, ResultType
 
-    def lock_file(f):
-        if f.writable():
-            fcntl.lockf(f, fcntl.LOCK_EX)
-
-    def unlock_file(f):
-        if f.writable():
-            fcntl.lockf(f, fcntl.LOCK_UN)
-
-except ModuleNotFoundError:
-    # Windows file locking
-    import msvcrts
-
-    def file_size(f):
-        return os.path.getsize(os.path.realpath(f.name))
-
-    def lock_file(f):
-        msvcrt.locking(f.fileno(), msvcrt.LK_RLCK, file_size(f))
-
-    def unlock_file(f):
-        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, file_size(f))
-
-
-# Class for ensuring that all file operations are atomic, treat
-# initialization like a standard call to 'open' that happens to be atomic.
-class AtomicOpen:
-    """
-    Open the file with arguments provided by user. Then acquire
-    a lock on that file object (WARNING: Advisory locking).
-
-    This file opener *must* be used in a "with" block.
-    """
-
-    def __init__(self, path, desc: str, *args, **kwargs):
-        # Open the file and acquire a lock on the file before operating
-        self.file = open(path, desc, *args, **kwargs)
-        # Lock the opened file
-        lock_file(self.file)
-
-    # Return the opened file object (knowing a lock has been obtained).
-    def __enter__(self, *args, **kwargs):
-        return self.file
-
-    # Unlock the file and close the file object.
-    def __exit__(self, exc_type=None, exc_value=None, traceback=None):
-        del exc_value, traceback
-        # Flush to make sure all buffered contents are written to file.
-        self.file.flush()
-        os.fsync(self.file.fileno())
-        # Release the lock on the file.
-        unlock_file(self.file)
-        self.file.close()
-        # Handle exceptions that may have come up during execution, by
-        # default any exceptions are raised to the user.
-        if exc_type is not None:
-            return False
-        else:
-            return True
-
+ReservoirMaker = Callable[[int, Experiment, ExpOptions], Union[Reservoir, RNN]]
+InitExp = Tuple[Result, ExpOptions, List[int], ReservoirMaker]
 
 ENUM_CHOICES = {
     "reg_type": [
@@ -147,138 +86,9 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-write", action="store_true", default=False)
     parser.add_argument("--exp_dirname", default=None, type=str)
     parser.add_argument("--esn_baseline", action="store_true", default=False)
+    parser.add_argument("--rnn_baseline", action="store_true", default=False)
     parser.add_argument("--debug", action="store_true", default=False)
     return parser
-
-
-def atomic_write_to_path(path: pathlib.Path, data: Dict[Any, list[Any]]):
-    if path.exists():
-        with AtomicOpen(path, "rb+") as f:
-            prev = pkl.loads(f.read())
-            for r in data:
-                prev[r] = prev.get(r, []) + data[r]
-            f.seek(0)
-            f.write(pkl.dumps(prev))
-            f.truncate()
-    else:
-        with AtomicOpen(path, "wb") as f:
-            pkl.dump(data, f)
-
-
-ResultType = Tuple[Dict[int, list[float]], Optional[Dict[str, Dict[int, list[Any]]]]]
-
-
-class Result:
-    """A class to manage and update results for the experiments.
-
-    The experiments are run separately for different CA rules and stored in a
-    dictionary `res`. This dictionary has one list of scores for each rule.
-
-    Each parallel job has a separate `Result` instance which points to the
-    results file and hold a temporary copy of the current scores, updated with
-    `res.update(score)`.
-
-    When finished, the scores can be flushed in a thread-safe way to the results
-    file with `res.save()`.
-
-    """
-
-    res: Dict[int, list[float]]
-    res_extra: Dict[str, Dict[int, list[Any]]]
-
-    def __init__(
-        self,
-        path: pathlib.Path,
-        opts_path: pathlib.Path,
-        counts_path: pathlib.Path,
-        path_extra: Optional[pathlib.Path] = None,
-        no_write: bool = False,
-    ):
-        self.path = path
-        self.opts_path = opts_path
-        self.counts_path = counts_path
-        self.path_extra = path_extra
-        self.res = {}
-        self.res_extra = {}
-        self.no_write = no_write
-
-    def update(self, rule: int, result: float):
-        """
-        Update the temporary dictionary with a new datapoint `result` for rule `rule`.
-        To make these new points persist one must save them with the `save` method.
-        """
-        if rule not in self.res:
-            self.res[rule] = []
-        self.res[rule].append(result)
-
-    def update_extra(self, prefix: str, rule: int, result: Any):
-        if self.path_extra is None:
-            raise TypeError("path_extra cannot be None if updating extra")
-        if prefix not in self.res_extra:
-            self.res_extra[prefix] = {}
-        if rule not in self.res_extra[prefix]:
-            self.res_extra[prefix][rule] = []
-        self.res_extra[prefix][rule].append(result)
-
-    def save(self) -> ResultType:
-        """Flush the current results to disk."""
-        added_values: Dict[int, int] = {}
-        if not self.no_write:
-            for r in self.res:
-                added_values[r] = added_values.get(r, 0) + len(self.res[r])
-            if not self.counts_path.exists():
-                pkl.dump({}, open(self.counts_path, "wb"))
-
-            with AtomicOpen(self.counts_path, "rb+") as f_counts:
-                counts_content = f_counts.read()
-                if counts_content:
-                    ct = pkl.loads(counts_content)
-                else:
-                    ct = {}
-                for r in added_values:
-                    ct[r] = ct.get(r, 0) + added_values[r]
-                f_counts.seek(0)
-                f_counts.write(pkl.dumps(ct))
-                f_counts.truncate()
-
-                atomic_write_to_path(self.path, self.res)
-
-        # Flush base results
-        ret_res = self.res
-        self.res = {}
-        # Extra results:
-        res_extra = self.save_extra()
-
-        return ret_res, res_extra
-
-    def save_extra(self) -> Optional[Dict[str, Dict[int, Any]]]:
-        if self.path_extra is not None and self.res_extra:
-            for prefix in self.res_extra:
-                if not self.no_write:
-                    name = self.path_extra.stem + f"_{prefix}" + self.path_extra.suffix
-                    pt = self.path_extra.parent / name
-                    atomic_write_to_path(pt, self.res_extra[prefix])
-            ret_res_extra = self.res_extra
-            self.res_extra = {}
-
-            return ret_res_extra
-        else:
-            return None
-
-    def read(self) -> Dict[int, int]:
-        """Reads and returns the current state of the results dictionary. This
-        will not change or flush the current results to disk.
-
-        """
-        if self.counts_path.exists():
-            with AtomicOpen(self.counts_path, "rb") as f:
-                prev = pkl.loads(f.read())
-            return prev
-        else:
-            return {}
-
-
-InitExp = Tuple[Result, ExpOptions, List[int], Type[Reservoir]]
 
 
 def init_logging(debug):
@@ -338,10 +148,31 @@ def init_exp(
         sys.exit(0)
 
     print(opts)
+    res = get_res(name, args, opts)
+    # We skip if some of the rules we are processing already have the desired number of
+    # experimental results.
+    if args.increment_data:
+        dic = res.read()
+        new_rules = [r for r in rules if dic.get(r, 0) < opts.n_rep]
+        skip = list(set(rules).difference(new_rules))
+        if skip:
+            print("Skipping rules {} for incremental".format(skip))
+        rules = new_rules
+
+    seed = opts.seed
+    random.seed(seed)
+    np.random.seed(seed)
+
+    res_fn, rules = get_res_fn(args, opts, rules)
+
+    return res, opts, rules, res_fn
+
+
+def get_res(name: str, args: argparse.Namespace, opts: ExpOptions) -> Result:
     json_opts = name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ".json")
     interm_rep = name.split("#")[0]
     base = pathlib.Path().resolve()
-    #
+
     # Command line experiment dirname overwrites the function argument
     if args.exp_dirname is not None:
         exp_dirname = args.exp_dirname
@@ -364,38 +195,39 @@ def init_exp(
 
     res = Result(path, opts_path, counts_path, extra_path, no_write=args.no_write)
 
-    # We skip if some of the rules we are processing already have the desired number of
-    # experimental results.
-    if args.increment_data:
-        dic = res.read()
-        new_rules = [r for r in rules if dic.get(r, 0) < opts.n_rep]
-        skip = list(set(rules).difference(new_rules))
-        if skip:
-            print("Skipping rules {} for incremental".format(skip))
-        rules = new_rules
-
-    seed = opts.seed
-    random.seed(seed)
-    np.random.seed(seed)
-
-    ca_class, rules = get_ca_class(args, opts, rules)
-
-    return res, opts, rules, ca_class
+    return res
 
 
-def get_ca_class(
+def get_res_fn(
     args: argparse.Namespace, opts: ExpOptions, rules: list[int]
-) -> Tuple[Reservoir, list[int]]:
+) -> Tuple[ReservoirMaker, list[int]]:
     if args.esn_baseline:
-        ca_class = ESN
+
+        def res_fn(t, exp: Experiment, opts):
+            return make_esn_reservoir(ESN, exp, opts)
+
         rules = [-1]
+
+    elif args.rnn_baseline:
+
+        def res_fn(t, exp: Experiment, opts):
+            return make_rnn(exp, opts)
+
+        rules = [-2]
+
     elif opts.ca_rule_type == CARuleType.STANDARD:
-        ca_class = CAReservoir
+
+        def res_fn(t, exp: Experiment, opts):
+            return make_ca_reservoir(CAReservoir, t, exp, opts)
+
     elif opts.ca_rule_type in [CARuleType.WINPUT, CARuleType.WINPUTONCE]:
-        ca_class = CAInput
+
+        def res_fn(t, exp: Experiment, opts):
+            return make_ca_reservoir(CAInput, t, exp, opts)
+
     else:
         raise ValueError(f"Incorrect CA rule type {opts.ca_rule_type}")
-    return ca_class, rules
+    return res_fn, rules
 
 
 def make_ca_reservoir(
@@ -403,7 +235,7 @@ def make_ca_reservoir(
 ) -> Reservoir:
     ca = ca_class(
         t,
-        exp.task.output_dimension(),
+        exp.output_dim,
         redundancy=opts.redundancy,
         r_height=opts.r_height,
         proj_factor=opts.proj_factor,
@@ -419,12 +251,21 @@ def make_esn_reservoir(
     esn_class: Type[ESN], exp: Experiment, opts: ExpOptions
 ) -> Reservoir:
     esn = esn_class(
-        exp.task.output_dimension(),
+        exp.output_dim,
         redundancy=opts.redundancy,
         r_height=opts.r_height,
         proj_factor=opts.proj_factor,
     )
     return esn
+
+
+def make_rnn(exp: RNNExperiment, opts: ExpOptions) -> RNN:
+    rnn = RNN(
+        n_input=exp.output_dim,
+        hidden_size=opts.redundancy * opts.r_height * opts.proj_factor,
+        out_size=exp.output_dim,
+    )
+    return rnn
 
 
 def run_task(
@@ -442,18 +283,14 @@ def run_task(
     if fname is None:
         fname = task.name + "#.pkl"
 
-    res, opts, rules, ca_class = init_exp(fname, opts_extra, rules=rules)
-    if rules:
+    res, opts, rules, res_fn = init_exp(fname, opts_extra, rules=rules)
+    if rules and rules != [-2]:
         for _ in tqdm(range(opts.n_rep), miniters=10):
             exp = Experiment(task, opts)
             for t in rules:
-                if ca_class in [CAReservoir, CAInput]:
-                    ca = make_ca_reservoir(ca_class, t, exp, opts)
-                elif ca_class == ESN:
-                    ca = make_esn_reservoir(ca_class, exp, opts)
-                else:
-                    raise TypeError(f"Unknown ca_class {ca_class}")
-                exp.set_ca(ca)
+                reservoir = res_fn(t, exp, opts)
+                assert not isinstance(reservoir, RNN)
+                exp.set_reservoir(reservoir)
                 if opts.reg_type == RegType.SGDCLS:
                     partial_test_results = exp.fit_with_eval()
                     res.update(t, partial_test_results[-1])
@@ -462,6 +299,13 @@ def run_task(
                     exp.fit()
                     res.update(t, exp.eval_test())
         return res.save()
+    elif rules == [-2]:
+        rnn_exp = RNNExperiment(task, opts)
+        rnn = res_fn(0, rnn_exp, opts)
+        assert isinstance(rnn, RNN)
+        rnn_exp.set_rnn(rnn)
+        rnn_exp.fit_with_eval()
+
     return {}, None
 
 

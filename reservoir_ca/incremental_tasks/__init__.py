@@ -1,22 +1,22 @@
 """The task library entrypoint."""
-from .tasks import (
-    Task,
-    BinarizedTask,
-    TokenTask,
-    BinaryTask,
-    TaskMask,
-    Mask,
-    HybridTask,
-)
-from .symbolic import SymbolCounting, HardSymbolCounting
-from .periodic import Periodic, IncreasingPeriod, RandomPeriodic
 from .language import (
+    AdjectiveLanguage,
     ElementaryLanguage,
     ElementaryLanguageWithWorldDef,
     HarderElementaryLanguage,
-    AdjectiveLanguage,
 )
-
+from .periodic import IncreasingPeriod, Periodic, RandomPeriodic
+from .symbolic import HardSymbolCounting, SymbolCounting
+from .tasks import (
+    BinarizedTask,
+    BinaryTask,
+    HybridTask,
+    Mask,
+    Task,
+    TaskMask,
+    TaskType,
+    TokenTask,
+)
 
 __all__ = [
     "Task",
@@ -35,4 +35,5 @@ __all__ = [
     "HarderElementaryLanguage",
     "AdjectiveLanguage",
     "HybridTask",
+    "TaskType",
 ]
