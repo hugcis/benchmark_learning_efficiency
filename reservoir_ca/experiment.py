@@ -345,7 +345,7 @@ class Experiment:
             if self.shuffle:
                 all_data_arr = self.shape_for_preproc(all_data)
                 shuffle_index = np.random.permutation(all_data_arr.shape[0])
-                all_data = all_data_arr[shuffle_index, :]
+                all_data_arr = all_data_arr[shuffle_index, :]
                 all_tgts = np.concatenate([c.reshape(-1) for c in all_tgts], axis=0)[
                     shuffle_index
                 ]
