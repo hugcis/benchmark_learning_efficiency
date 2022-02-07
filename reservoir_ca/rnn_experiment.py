@@ -79,7 +79,7 @@ class RNNExperiment:
 
     def validation_score(self) -> float:
         rnn = self.check_rnn()
-        score = []
+        score: list[list[float]] = []
         if self.testing_masks is not None:
             all_tasks = [
                 [

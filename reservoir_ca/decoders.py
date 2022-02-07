@@ -190,7 +190,7 @@ class AdamClassifier(BaseEstimator, ClassifierMixin):
             self.cls_map = {self.classes[i]: i for i in range(len(self.classes))}
             self.inv_cls_map = {v: k for (k, v) in self.cls_map.items()}
             self.linear = nn.Linear(X.shape[-1], len(self.classes))
-            self.optimizer = optim.Adam(self.linear.parameters(), weight_decay=0.1)
+            self.optimizer = optim.Adam(self.linear.parameters(), weight_decay=1.)
             self.is_fitted = True
         elif not self.is_fitted:
             raise ValueError(
@@ -236,7 +236,7 @@ class SGDCls(BaseEstimator, ClassifierMixin):
         # self.sgd = AdamClassifier()
         self.test_values: List[float] = []
 
-    def fit(self, X, y, X_t=None, y_t=None, batch_size: int = 8) -> "SGDCls":
+    def fit(self, X, y, X_t=None, y_t=None, batch_size: int = 16) -> "SGDCls":
         self.test_values = []
         # Check classes
         self.classes_ = unique_labels(y)
