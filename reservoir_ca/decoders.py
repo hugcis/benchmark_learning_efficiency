@@ -1,4 +1,5 @@
 """The decoders for reading and predicting outputs from the reservoirs."""
+import logging
 from enum import Enum
 from typing import List, Optional, Sequence
 
@@ -13,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC, LinearSVC
 from sklearn.utils.multiclass import unique_labels
 from sklearn.utils.validation import check_is_fitted
-from torch import nn
+from torch import nn, optim
 from torch.nn import functional
 
 __all__ = [
@@ -175,6 +176,54 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
         return self.classes_[out.argmax(1).detach().numpy()]
 
 
+class AdamClassifier(BaseEstimator, ClassifierMixin):
+    def __init__(self):
+        self.optimizer: Optional[optim.Adam] = None
+        self.linear: Optional[nn.Linear] = None
+        self.classes: Optional[np.ndarray] = None
+        self.is_fitted = False
+        self.loss_fn = nn.CrossEntropyLoss()
+
+    def partial_fit(self, X, y, classes: np.ndarray = None) -> "AdamClassifier":
+        if not self.is_fitted and classes is not None:
+            self.classes = classes
+            self.cls_map = {self.classes[i]: i for i in range(len(self.classes))}
+            self.inv_cls_map = {v: k for (k, v) in self.cls_map.items()}
+            self.linear = nn.Linear(X.shape[-1], len(self.classes))
+            self.optimizer = optim.Adam(self.linear.parameters(), weight_decay=0.1)
+            self.is_fitted = True
+        elif not self.is_fitted:
+            raise ValueError(
+                "Uninitialized classifer needs classes for "
+                "the first call to partial_fit"
+            )
+        assert (
+            self.linear is not None
+            and self.optimizer is not None
+            and self.classes is not None
+        )
+
+        self.linear.train()
+        self.optimizer.zero_grad()
+        out = self.linear(torch.Tensor(X))
+        error = self.loss_fn(out, torch.Tensor([self.cls_map[i] for i in y]).long())
+        error.backward()
+        self.optimizer.step()
+        return self
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        if self.linear is not None:
+            self.linear.eval()
+            return np.array(
+                [
+                    self.inv_cls_map[i]
+                    for i in self.linear(torch.Tensor(X)).argmax(1).detach().numpy()
+                ]
+            )
+        else:
+            raise ValueError("Uninitialized network")
+
+
 class SGDCls(BaseEstimator, ClassifierMixin):
     """A SGD-based linear classifier that can keep track of the testing loss
     during progress.
@@ -184,9 +233,10 @@ class SGDCls(BaseEstimator, ClassifierMixin):
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
         self.sgd = SGDClassifier(learning_rate="constant", eta0=0.001, alpha=0.001)
+        # self.sgd = AdamClassifier()
         self.test_values: List[float] = []
 
-    def fit(self, X, y, X_t=None, y_t=None, batch_size: int = 16) -> "SGDCls":
+    def fit(self, X, y, X_t=None, y_t=None, batch_size: int = 8) -> "SGDCls":
         self.test_values = []
         # Check classes
         self.classes_ = unique_labels(y)
@@ -203,6 +253,7 @@ class SGDCls(BaseEstimator, ClassifierMixin):
             self.sgd.partial_fit(batch_x, batch_y, classes=classes)
             if X_t is not None and y_t is not None:
                 self.test_values.append(self.sgd.score(X_t, y_t))
+                logging.debug("Validation score %s", self.test_values[-1])
             if classes is not None:
                 classes = None
         return self

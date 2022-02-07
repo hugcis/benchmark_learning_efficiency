@@ -64,12 +64,20 @@ def make_parser() -> argparse.ArgumentParser:
     base_options = ExpOptions()
     opts_dict = asdict(base_options)
     for opt in opts_dict:
-        if opt == "rules" or opt == "seed":
+        # Ignore these options for the parser, they are manually added above
+        if opt in ["rules", "seed"]:
             continue
         elif isinstance(opts_dict[opt], Enum):
             choices = ENUM_CHOICES[opt]
             parser.add_argument(
                 f"--{opt}", default=choices[0], choices=choices, type=str
+            )
+        elif isinstance(opts_dict[opt], bool):
+            default_value = vars(base_options)[opt]
+            parser.add_argument(
+                f"--{opt}",
+                default=default_value,
+                action="store_true" if not default_value else "store_false",
             )
         else:
             parser.add_argument(

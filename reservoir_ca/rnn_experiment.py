@@ -1,6 +1,7 @@
 """This module if for running the experiments with the standard recurrent models
 such as RNNs.
 """
+import logging
 from typing import Optional
 
 import numpy as np
@@ -11,12 +12,13 @@ from reservoir_ca.experiment import (
     group_by_lens,
     to_dim_one_hot,
 )
-from reservoir_ca.tasks import Task, TokenTask, BinarizedTask
 from reservoir_ca.standard_recurrent import RNN
+from reservoir_ca.tasks import BinarizedTask, Task, TokenTask
 
 
 class RNNExperiment:
     """An experiment with fully training a recurrent model."""
+
     rnn: Optional[RNN] = None
     task: Task
 
@@ -48,6 +50,12 @@ class RNNExperiment:
         train_seqs, train_masks, test_seqs, test_masks = get_train_test_split(
             tasks, masks, self.dic, self.opts.ignore_mask
         )
+        logging.debug(
+            "Number of tasks %s -- %s training -- %s testing",
+            len(tasks),
+            len(train_seqs),
+            len(test_seqs),
+        )
 
         # Group sequences by lengths for batch processing
         self.training_tasks, self.training_masks = group_by_lens(
@@ -69,12 +77,45 @@ class RNNExperiment:
     def set_rnn(self, rnn: RNN):
         self.rnn = rnn
 
+    def validation_score(self) -> float:
+        rnn = self.check_rnn()
+        score = []
+        if self.testing_masks is not None:
+            all_tasks = [
+                [
+                    (example, self.testing_masks[length_idx][ex_idx])
+                    for ex_idx, example in enumerate(task)
+                ]
+                for length_idx, task in enumerate(self.testing_tasks)
+            ]
+            for single_length_task in all_tasks:
+                encoded = np.concatenate(
+                    [
+                        to_dim_one_hot(i[0], self.output_dim)[:, None, :]
+                        for i in single_length_task
+                    ],
+                    axis=1,
+                )
+                example = np.concatenate(
+                    [np.array(i[0])[:, None] for i in single_length_task],
+                    axis=1,
+                )
+                msk = np.array([i[1] for i in single_length_task]).reshape(-1)
+                score.append(rnn.score(encoded, example, msk))
+
+            return np.mean([item for l_score in score for item in l_score])
+        else:
+            raise ValueError(
+                "The mask cannot be ignored for the RNN baseline, "
+                "do not use the option --ignore_mask"
+            )
+
     def fit_with_eval(self) -> list[float]:
         rnn = self.check_rnn()
         results = []
         if self.training_masks is not None:
             all_tasks = [
-                (example, self.training_masks[length_idx][ex_idx])
+                (example, np.array(self.training_masks[length_idx][ex_idx]))
                 for length_idx, task in enumerate(self.training_tasks)
                 for ex_idx, example in enumerate(task)
             ]
@@ -84,5 +125,12 @@ class RNNExperiment:
                 encoded = encoded.reshape(encoded.shape[0], 1, encoded.shape[1])
                 error = rnn.step(encoded, example, msk)
                 if error is not None:
-                    results.append(error)
+                    results.append(self.validation_score())
+                    logging.debug("Validation score %s", results[-1])
+        else:
+            raise ValueError(
+                "The mask cannot be ignored for the RNN baseline, "
+                "do not use the option --ignore_mask"
+            )
+
         return results

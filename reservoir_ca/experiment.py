@@ -101,7 +101,7 @@ class ExpOptions:
         return hasher.hexdigest()[:8]
 
 
-def to_dim_one_hot(data, out_dim):
+def to_dim_one_hot(data: np.ndarray, out_dim: int) -> np.ndarray:
     return np.eye(out_dim)[data]
 
 
@@ -146,6 +146,7 @@ def get_train_test_split(
 
 
 class Experiment:
+    """An experiment with a reservoir and a task."""
     ca: Optional[Reservoir] = None
     preproc: Optional[Preprocessor] = None
     task: Task
