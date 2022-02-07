@@ -16,6 +16,7 @@ from reservoir_ca.standard_recurrent import RNN
 
 
 class RNNExperiment:
+    """An experiment with fully training a recurrent model."""
     rnn: Optional[RNN] = None
     task: Task
 
@@ -70,6 +71,7 @@ class RNNExperiment:
 
     def fit_with_eval(self) -> list[float]:
         rnn = self.check_rnn()
+        results = []
         if self.training_masks is not None:
             all_tasks = [
                 (example, self.training_masks[length_idx][ex_idx])
@@ -80,4 +82,7 @@ class RNNExperiment:
             for (example, msk) in all_tasks:
                 encoded = to_dim_one_hot(example, self.output_dim)
                 encoded = encoded.reshape(encoded.shape[0], 1, encoded.shape[1])
-                rnn.step(encoded, example, msk)
+                error = rnn.step(encoded, example, msk)
+                if error is not None:
+                    results.append(error)
+        return results

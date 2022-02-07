@@ -1,9 +1,9 @@
+"""The decoders for reading and predicting outputs from the reservoirs."""
 from enum import Enum
 from typing import List, Optional, Sequence
 
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.utils.data
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.ensemble import RandomForestClassifier
@@ -13,6 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC, LinearSVC
 from sklearn.utils.multiclass import unique_labels
 from sklearn.utils.validation import check_is_fitted
+from torch import nn
 from torch.nn import functional
 
 __all__ = [
@@ -27,7 +28,7 @@ __all__ = [
 
 
 class ExperimentData(torch.utils.data.Dataset):
-    def __init__(self, X, y):
+    def __init__(self, X: np.ndarray, y: np.ndarray):
         self.X = X
         self.y = y
 
@@ -39,6 +40,8 @@ class ExperimentData(torch.utils.data.Dataset):
 
 
 class ConvNetwork(nn.Module):
+    """A Convolutional neural network for the ConvClassifier."""
+
     def __init__(
         self,
         channels: Sequence[int],
@@ -84,6 +87,8 @@ class OptType(Enum):
 
 
 class ConvClassifier(BaseEstimator, ClassifierMixin):
+    """The convolutional neural network classifier."""
+
     conv_network: Optional[ConvNetwork]
 
     def __init__(
@@ -138,25 +143,26 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
         ct = 0
         running_err = 0
         for inp, target in data_loader:
-
-            def closure():
-                if torch.is_grad_enabled():
-                    optimizer.zero_grad()
-                if self.conv_network is not None:
-                    out = self.conv_network.forward(inp.float())[:, :, 0]
-                else:
-                    raise ValueError("Uninitialized network")
-                err = loss_fn(out, target)
-                if err.requires_grad:
-                    err.backward()
-                return err
-
-            optimizer.step(closure)
-
-            running_err += closure().item()
+            running_err += self.run_step(inp, target, optimizer, loss_fn)
             ct += 1
         if self.verbose:
             print(f"Epoch {ep}, error is {running_err / ct}")
+
+    def run_step(self, inp, target, optimizer, loss_fn):
+        def closure():
+            if torch.is_grad_enabled():
+                optimizer.zero_grad()
+            if self.conv_network is not None:
+                out = self.conv_network.forward(inp.float())[:, :, 0]
+            else:
+                raise ValueError("Uninitialized network")
+            err = loss_fn(out, target)
+            if err.requires_grad:
+                err.backward()
+            return err
+
+        optimizer.step(closure)
+        return closure().item()
 
     def predict(self, X):
         if self.conv_network is not None:
@@ -165,12 +171,16 @@ class ConvClassifier(BaseEstimator, ClassifierMixin):
             raise ValueError("Uninitialized network")
         check_is_fitted(self)
 
-        # X = check_array(X)
         out = self.conv_network.forward(torch.Tensor(X))[:, :, 0]
         return self.classes_[out.argmax(1).detach().numpy()]
 
 
 class SGDCls(BaseEstimator, ClassifierMixin):
+    """A SGD-based linear classifier that can keep track of the testing loss
+    during progress.
+
+    """
+
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
         self.sgd = SGDClassifier(learning_rate="constant", eta0=0.001, alpha=0.001)
@@ -189,8 +199,8 @@ class SGDCls(BaseEstimator, ClassifierMixin):
         self.test_values.append(self.sgd.score(X_t, y_t))
 
         for i in range(0, X.shape[0], batch_size):
-            batch_X, batch_y = X[i : i + batch_size], y[i : i + batch_size]
-            self.sgd.partial_fit(batch_X, batch_y, classes=classes)
+            batch_x, batch_y = X[i : i + batch_size], y[i : i + batch_size]
+            self.sgd.partial_fit(batch_x, batch_y, classes=classes)
             if X_t is not None and y_t is not None:
                 self.test_values.append(self.sgd.score(X_t, y_t))
             if classes is not None:
