@@ -346,7 +346,7 @@ class ElementaryLanguageWithWorldDefCounting(ElementaryLanguageWithWorldDef):
                 task += (
                     [self.sentence_term_symbol]
                     + [
-                        "HOw",
+                        "HOW",
                         "MANY",
                         "PEOPLE",
                         "DO",
