@@ -112,6 +112,7 @@ class RNNExperiment:
 
     def fit_with_eval(self) -> list[float]:
         rnn = self.check_rnn()
+        best_reached = False
         results = []
         if self.training_masks is not None:
             all_tasks = [
@@ -119,14 +120,21 @@ class RNNExperiment:
                 for length_idx, task in enumerate(self.training_tasks)
                 for ex_idx, example in enumerate(task)
             ]
-            np.random.shuffle(all_tasks)
-            for (example, msk) in all_tasks:
-                encoded = to_dim_one_hot(example, self.output_dim)
-                encoded = encoded.reshape(encoded.shape[0], 1, encoded.shape[1])
-                error = rnn.step(encoded, example, msk)
-                if error is not None:
-                    results.append(self.validation_score())
-                    logging.debug("Validation score %s", results[-1])
+            for _ in range(10):
+                logging.debug("New epoch")
+                np.random.shuffle(all_tasks)
+                for (example, msk) in all_tasks:
+                    encoded = to_dim_one_hot(example, self.output_dim)
+                    encoded = encoded.reshape(encoded.shape[0], 1, encoded.shape[1])
+                    error = rnn.step(encoded, example, msk)
+                    if error is not None:
+                        results.append(self.validation_score())
+                        logging.debug("Validation score %s", results[-1])
+                        if results[-1] == 1.0 and not best_reached:
+                            logging.info(
+                                "Perfect accuracy reached in %d steps", len(results)
+                            )
+                            best_reached = True
         else:
             raise ValueError(
                 "The mask cannot be ignored for the RNN baseline, "

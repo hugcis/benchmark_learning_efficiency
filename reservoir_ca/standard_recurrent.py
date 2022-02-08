@@ -12,21 +12,21 @@ class RNN:
     """The trainable RNN baseline class."""
 
     def __init__(
-        self, n_input: int, hidden_size: int, out_size: int, batch_size: int = 8
+        self, n_input: int, hidden_size: int, out_size: int, batch_size: int = 16
     ):
         self.hidden_size = hidden_size
         self.out_size = out_size
 
         self.rnn = nn.RNN(n_input, self.hidden_size)
         self.linear = nn.Linear(self.hidden_size, self.out_size)
-        # self.optimizer = optim.SGD(
-        #     chain(self.linear.parameters(), self.rnn.parameters()),
-        #     lr=0.01,
-        #     weight_decay=0.01,
-        # )
-        self.optimizer = optim.Adam(
+        self.optimizer = optim.SGD(
             chain(self.linear.parameters(), self.rnn.parameters()),
+            lr=0.01,
+            weight_decay=0.01,
         )
+        # self.optimizer = optim.Adam(
+            # chain(self.linear.parameters(), self.rnn.parameters()),
+        # )
         self.loss_fn = nn.CrossEntropyLoss()
         self.batch_size = batch_size
 
