@@ -105,7 +105,11 @@ def init_logging(debug):
     log_level = os.environ.get("LOGLEVEL", "INFO")
     if debug:
         log_level = "DEBUG"
-    logging.basicConfig(level=log_level)
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s | Process:%(process)d | %(filename)s | "
+        "%(levelname)s :: %(message)s",
+    )
 
 
 def set_opts_from_args(opts: ExpOptions, args: argparse.Namespace) -> ExpOptions:
