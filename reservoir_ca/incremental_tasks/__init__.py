@@ -3,6 +3,7 @@ from .language import (
     AdjectiveLanguage,
     ElementaryLanguage,
     ElementaryLanguageWithWorldDef,
+    ElementaryLanguageWithWorldDefCounting,
     HarderElementaryLanguage,
 )
 from .periodic import IncreasingPeriod, Periodic, RandomPeriodic
@@ -32,8 +33,10 @@ __all__ = [
     "RandomPeriodic",
     "ElementaryLanguage",
     "ElementaryLanguageWithWorldDef",
+    "ElementaryLanguageWithWorldDefCounting",
     "HarderElementaryLanguage",
     "AdjectiveLanguage",
     "HybridTask",
     "TaskType",
+
 ]

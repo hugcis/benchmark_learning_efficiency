@@ -8,6 +8,7 @@ class ProjectionType(Enum):
     ONE_TO_ONE = 1
     ONE_TO_MANY = 2
     ONE_TO_PATTERN = 3
+    REWRITE = 4
 
     def __str__(self):
         return f"{self.name}"
@@ -76,7 +77,7 @@ class CAReservoir:
         self.ca_rule = ca_rule
         self.n_size = n_size
         # We only support rules with neighborhood sizes 1 or 2 for now
-        assert self.n_size == 1 or self.n_size == 2
+        assert self.n_size in (1, 2)
         if not validate_rule(self.ca_rule, self.n_size, 2):
             raise ValueError(
                 f"Rule {self.ca_rule} incompatible with 2 states and "
@@ -90,11 +91,34 @@ class CAReservoir:
         self.proj_pattern = proj_pattern
         self.proj_matrix = self.set_proj_matrix()
 
-        self.input_function = np.logical_xor
+        if self.proj_type is ProjectionType.REWRITE:
+            def inp_fn(inp, projection_matrix, state):
+                projected_inp = inp @ projection_matrix
+                inv_projected_inp = (1 - inp) @ projection_matrix
+
+                state[projected_inp == 1] = 1
+                state[inv_projected_inp > 0] = 0
+
+                return state
+        else:
+            def inp_fn(inp, projection_matrix, state):
+                projected_inp = inp @ projection_matrix
+                return np.logical_xor(projected_inp, state)
+
+        self.input_function = inp_fn
 
     def set_proj_matrix(self) -> np.ndarray:
         proj_matrix = np.zeros((self.inp_size, self.state_size), dtype=int)
+
         if self.proj_type is ProjectionType.ONE_TO_ONE:
+            for t in range(self.redundancy):
+                idx_x = np.random.permutation(self.inp_size)
+                idx_y = np.random.choice(self.proj_factor, size=self.inp_size)
+                proj_matrix[:, t * self.proj_factor : (t + 1) * self.proj_factor][
+                    idx_x, idx_y
+                ] = 1
+
+        elif self.proj_type is ProjectionType.REWRITE:
             for t in range(self.redundancy):
                 idx_x = np.random.permutation(self.inp_size)
                 idx_y = np.random.choice(self.proj_factor, size=self.inp_size)
@@ -137,7 +161,7 @@ class CAReservoir:
                     ] = 1
 
         else:
-            raise ValueError("Unrecognized projection type {}".format(self.proj_type))
+            raise ValueError(f"Unrecognized projection type {self.proj_type}")
 
         return proj_matrix
 
@@ -159,10 +183,9 @@ class CAReservoir:
     ) -> Tuple[np.ndarray, np.ndarray]:
         assert state.shape[1] == self.state_size
         assert inp.shape[1] == self.inp_size
-        projected_inp = inp @ self.proj_matrix
 
         # The input is encoded into the current state via the input function
-        mod_state = self.input_function(projected_inp, state)
+        mod_state = self.input_function(inp, self.proj_matrix, state)
         output = np.zeros((inp.shape[0], self.r_height, self.state_size))
         # We apply r_height steps of the CA
         for i in range(self.r_height):

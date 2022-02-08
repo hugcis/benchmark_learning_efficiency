@@ -49,7 +49,7 @@ ENUM_CHOICES = {
         "adam",
         "adam_cls",
     ],
-    "proj_type": ["one_to_one", "one_to_many", "one_to_pattern"],
+    "proj_type": ["one_to_one", "one_to_many", "one_to_pattern", "rewrite"],
     "ca_rule_type": ["standard", "winput", "winputonce"],
 }
 
