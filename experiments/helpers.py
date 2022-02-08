@@ -46,6 +46,8 @@ ENUM_CHOICES = {
         "logistic",
         "sgd",
         "sgd_svm",
+        "adam",
+        "adam_cls",
     ],
     "proj_type": ["one_to_one", "one_to_many", "one_to_pattern"],
     "ca_rule_type": ["standard", "winput", "winputonce"],
@@ -155,7 +157,8 @@ def init_exp(
         print(name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ""))
         sys.exit(0)
 
-    print(opts)
+    logging.info("Using options %s", opts)
+    logging.info("Hash is %s", opts.hashed_repr())
     res = get_res(name, args, opts)
     res_fn, rules = get_res_fn(args, opts, rules)
 
@@ -306,7 +309,7 @@ def run_task(
                 reservoir = res_fn(t, exp, opts)
                 assert not isinstance(reservoir, RNN)
                 exp.set_reservoir(reservoir)
-                if opts.reg_type == RegType.SGDCLS:
+                if opts.reg_type in [RegType.SGDCLS, RegType.ADAMCLS]:
                     partial_test_results = exp.fit_with_eval()
                     res.update(t, partial_test_results[-1])
                     res.update_extra("tta", t, partial_test_results)

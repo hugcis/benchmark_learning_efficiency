@@ -17,6 +17,7 @@ from reservoir_ca.decoders import (
     MLPClassifier,
     RandomForestClassifier,
     SGDCls,
+    CLSType
 )
 from reservoir_ca.esn_res import ESN
 from reservoir_ca.preprocessors import ConvPreprocessor, Preprocessor, ScalePreprocessor
@@ -33,6 +34,7 @@ class RegType(Enum):
     CONV_MLP = 5
     LOGISTICREG = 6
     SGDCLS = 7
+    ADAMCLS = 8
 
     @staticmethod
     def from_str(label: str) -> "RegType":
@@ -50,11 +52,13 @@ class RegType(Enum):
             return RegType.LOGISTICREG
         elif label in ("sgd", "sgd_svm"):
             return RegType.SGDCLS
+        elif label in ("adam", "adam_cls"):
+            return RegType.ADAMCLS
         else:
             raise NotImplementedError
 
     def __str__(self):
-        return "%s" % self.name
+        return f"{self.name}"
 
 
 @dataclass
@@ -173,7 +177,9 @@ class Experiment:
         elif exp_options.reg_type == RegType.LOGISTICREG:
             self.reg = LogisticRegression(C=1.0, solver="liblinear")
         elif exp_options.reg_type == RegType.SGDCLS:
-            self.reg = SGDCls()
+            self.reg = SGDCls(cls_type=CLSType.SGD)
+        elif exp_options.reg_type == RegType.ADAMCLS:
+            self.reg = SGDCls(cls_type=CLSType.ADAM)
         else:
             raise ValueError(f"Unknown regression type {exp_options.reg_type}")
 

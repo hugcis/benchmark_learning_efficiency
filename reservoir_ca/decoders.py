@@ -224,16 +224,23 @@ class AdamClassifier(BaseEstimator, ClassifierMixin):
             raise ValueError("Uninitialized network")
 
 
+class CLSType(Enum):
+    SGD = 1
+    ADAM = 2
+
+
 class SGDCls(BaseEstimator, ClassifierMixin):
     """A SGD-based linear classifier that can keep track of the testing loss
     during progress.
 
     """
 
-    def __init__(self, verbose: bool = False):
+    def __init__(self, verbose: bool = False, cls_type: CLSType = CLSType.SGD):
         self.verbose = verbose
-        # self.sgd = SGDClassifier(learning_rate="constant", eta0=0.001, alpha=0.001)
-        self.sgd = AdamClassifier()
+        if cls_type == CLSType.SGD:
+            self.sgd = SGDClassifier(learning_rate="constant", eta0=0.001, alpha=0.001)
+        else:
+            self.sgd = AdamClassifier()
         self.test_values: List[float] = []
 
     def fit(self, X, y, X_t=None, y_t=None, batch_size: int = 16) -> "SGDCls":
@@ -246,7 +253,8 @@ class SGDCls(BaseEstimator, ClassifierMixin):
 
         classes = self.classes_
         self.sgd.partial_fit(X[0:1], y[0:1], classes=classes)
-        self.test_values.append(self.sgd.score(X_t, y_t))
+        if X_t is not None and y_t is not None:
+            self.test_values.append(self.sgd.score(X_t, y_t))
 
         for i in range(0, X.shape[0], batch_size):
             batch_x, batch_y = X[i : i + batch_size], y[i : i + batch_size]

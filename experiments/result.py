@@ -144,10 +144,11 @@ class Result:
         """Flush the current results to disk."""
         added_values: Dict[int, int] = {}
         if not self.no_write:
-            for r in self.res:
-                added_values[r] = added_values.get(r, 0) + len(self.res[r])
+            for r, res_value in self.res.items():
+                added_values[r] = added_values.get(r, 0) + len(res_value)
             if not self.counts_path.exists():
-                pkl.dump({}, open(self.counts_path, "wb"))
+                with open(self.counts_path, "wb") as count_file:
+                    pkl.dump({}, count_file)
 
             with AtomicOpen(self.counts_path, "rb+") as f_counts:
                 counts_content = f_counts.read()
@@ -155,8 +156,8 @@ class Result:
                     ct = pkl.loads(counts_content)
                 else:
                     ct = {}
-                for r in added_values:
-                    ct[r] = ct.get(r, 0) + added_values[r]
+                for r, added_val in added_values.items():
+                    ct[r] = ct.get(r, 0) + added_val
                 f_counts.seek(0)
                 f_counts.write(pkl.dumps(ct))
                 f_counts.truncate()
@@ -165,9 +166,7 @@ class Result:
 
         # Flush base results
         ret_res = self.res
-        logging.info(
-            "Saving result for rules %s", ", ".join(str(i) for i in ret_res.keys())
-        )
+        logging.info("Saving result for rules %s", ", ".join(str(i) for i in ret_res))
         self.res = {}
         # Extra results:
         res_extra = self.save_extra()
@@ -176,11 +175,12 @@ class Result:
 
     def save_extra(self) -> Optional[Dict[str, Dict[int, Any]]]:
         if self.path_extra is not None and self.res_extra:
-            for prefix in self.res_extra:
+            for prefix, subdict in self.res_extra.items():
                 if not self.no_write:
                     name = self.path_extra.stem + f"_{prefix}" + self.path_extra.suffix
                     pt = self.path_extra.parent / name
-                    atomic_write_to_path(pt, self.res_extra[prefix])
+                    atomic_write_to_path(pt, subdict)
+                    logging.info("Saving extra results to %s", pt)
             ret_res_extra = self.res_extra
             self.res_extra = {}
 
