@@ -1,3 +1,5 @@
+"""The result saver class and functions"""
+import logging
 import os
 import pickle as pkl
 import pathlib
@@ -163,6 +165,9 @@ class Result:
 
         # Flush base results
         ret_res = self.res
+        logging.info(
+            "Saving result for rules %s", ", ".join(str(i) for i in ret_res.keys())
+        )
         self.res = {}
         # Extra results:
         res_extra = self.save_extra()

@@ -157,6 +157,8 @@ def init_exp(
 
     print(opts)
     res = get_res(name, args, opts)
+    res_fn, rules = get_res_fn(args, opts, rules)
+
     # We skip if some of the rules we are processing already have the desired number of
     # experimental results.
     if args.increment_data:
@@ -164,14 +166,12 @@ def init_exp(
         new_rules = [r for r in rules if dic.get(r, 0) < opts.n_rep]
         skip = list(set(rules).difference(new_rules))
         if skip:
-            print("Skipping rules {} for incremental".format(skip))
+            print(f"Skipping rules {skip} for incremental")
         rules = new_rules
 
     seed = opts.seed
     random.seed(seed)
     np.random.seed(seed)
-
-    res_fn, rules = get_res_fn(args, opts, rules)
 
     return res, opts, rules, res_fn
 
@@ -185,11 +185,12 @@ def get_res(name: str, args: argparse.Namespace, opts: ExpOptions) -> Result:
     if args.exp_dirname is not None:
         exp_dirname = args.exp_dirname
     out_dir = base / exp_dirname / interm_rep
+    logging.info("Saving output to folder %s", out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     opts_path = out_dir / pathlib.Path(json_opts)
     if not opts_path.exists():
-        with open(opts_path, "w") as f:
+        with open(opts_path, "w", encoding="utf-8") as f:
             f.write(opts.to_json())
 
     res_fname = name.replace("#", f"_{opts.hashed_repr()}")
@@ -210,15 +211,19 @@ def get_res_fn(
     args: argparse.Namespace, opts: ExpOptions, rules: list[int]
 ) -> Tuple[ReservoirMaker, list[int]]:
     if args.esn_baseline:
+        logging.info("Experiment with the ESN baseline")
 
         def res_fn(t, exp: Experiment, opts):
+            del t
             return make_esn_reservoir(ESN, exp, opts)
 
         rules = [-1]
 
     elif args.rnn_baseline:
+        logging.info("Experiment with the supervised RNN baseline")
 
         def res_fn(t, exp: Experiment, opts):
+            del t
             return make_rnn(exp, opts)
 
         rules = [-2]
@@ -279,7 +284,7 @@ def make_rnn(exp: RNNExperiment, opts: ExpOptions) -> RNN:
 def run_task(
     task_cls: Type[Task],
     cls_args: List[Any],
-    opts_extra: Dict[str, Any] = {},
+    opts_extra: Optional[Dict[str, Any]] = None,
     fname: Optional[str] = None,
     rules: Optional[List[int]] = None,
 ) -> ResultType:
@@ -291,6 +296,8 @@ def run_task(
     if fname is None:
         fname = task.name + "#.pkl"
 
+    if opts_extra is None:
+        opts_extra = {}
     res, opts, rules, res_fn = init_exp(fname, opts_extra, rules=rules)
     if rules and rules != [-2]:
         for _ in tqdm(range(opts.n_rep), miniters=10):
@@ -312,17 +319,23 @@ def run_task(
         rnn = res_fn(0, rnn_exp, opts)
         assert isinstance(rnn, RNN)
         rnn_exp.set_rnn(rnn)
-        rnn_exp.fit_with_eval()
+        partial_test_results = rnn_exp.fit_with_eval()
 
+        res.update(-2, partial_test_results[-1])
+        res.update_extra("tta", -2, partial_test_results)
+
+        return res.save()
     return {}, None
 
 
 class RuleOptimizer:
+    """A genetic algorithm based optimizer to evolve rules."""
+
     def __init__(
         self,
         task_cls: Type[Task],
         cls_args: List[Any],
-        opts_extra: Dict[str, Any] = {},
+        opts_extra: Optional[Dict[str, Any]] = None,
         initial_rule: Optional[int] = None,
     ) -> None:
         self.task_cls = task_cls
