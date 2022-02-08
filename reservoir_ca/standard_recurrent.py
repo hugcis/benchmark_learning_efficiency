@@ -1,7 +1,7 @@
 """The supervised recurent models module."""
 import logging
 from itertools import chain
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
 import torch
@@ -25,7 +25,7 @@ class RNN:
             weight_decay=0.01,
         )
         # self.optimizer = optim.Adam(
-            # chain(self.linear.parameters(), self.rnn.parameters()),
+        # chain(self.linear.parameters(), self.rnn.parameters()),
         # )
         self.loss_fn = nn.CrossEntropyLoss()
         self.batch_size = batch_size
