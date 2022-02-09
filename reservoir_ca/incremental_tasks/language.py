@@ -238,6 +238,23 @@ class ElementaryLanguageWithWorldDef(ElementaryLanguage):
         return choose_minimal_set(tasks, max_n_seq, mask=mask)
 
 
+NUMBERS = [
+    "ZERO",
+    "ONE",
+    "TWO",
+    "THREE",
+    "FOUR",
+    "FIVE",
+    "SIX",
+    "SEVEN",
+    "EIGHT",
+    "NINE",
+    "TEN",
+    "ELEVEN",
+    "TWELVE",
+]
+
+
 class ElementaryLanguageWithWorldDefCounting(ElementaryLanguageWithWorldDef):
     def __init__(
         self,
@@ -265,21 +282,7 @@ class ElementaryLanguageWithWorldDefCounting(ElementaryLanguageWithWorldDef):
             "UNDERSTAND",
             "TOUCH",
         ],
-        numbers: List[str] = [
-            "ZERO",
-            "ONE",
-            "TWO",
-            "THREE",
-            "FOUR",
-            "FIVE",
-            "SIX",
-            "SEVEN",
-            "EIGHT",
-            "NINE",
-            "TEN",
-            "ELEVEN",
-            "TWELVE",
-        ],
+        numbers: List[str] = NUMBERS,
     ):
         super().__init__(object_names=object_names, verbs=verbs)
         self.name = "qa-world-def-ct"
@@ -339,8 +342,9 @@ class ElementaryLanguageWithWorldDefCounting(ElementaryLanguageWithWorldDef):
 
             coin_up = np.random.random() > 0.5
             if coin_up:
-                # Choose which verb/name we will ask about
+                # Choose which verb we will ask about
                 question_verb = str(np.random.choice(verbs))
+                # Count how many
                 tgt = len(yes_map[question_verb])
                 # Make the answer
                 task += (
@@ -553,6 +557,192 @@ class AdjectiveLanguage(TokenTask):
                 + [self.query_symbol]
                 + ["YES" if tgt in yes_map[question_verb] else "NO"]
             )
+        else:
+            # Question about size or color
+            question_verb, tgt = candidates[np.random.randint(len(candidates))]
+            # Select the adjective we are asking about
+            selected_adj: str = np.random.choice(tgt[:-1])
+            if selected_adj in self.color_adj:
+                question = ["WHAT", "COLOR", "IS", "THE"]
+            elif selected_adj in self.size_adj:
+                question = ["WHAT", "SIZE", "IS", "THE"]
+            else:
+                raise ValueError(f"The adjective {selected_adj} is not in the list.")
+            # Make the answer
+            return (
+                [self.sentence_term_symbol]
+                + question
+                + [tgt[-1], "I", question_verb, self.query_symbol]
+                + [selected_adj]
+            )
+
+
+class AdjectiveLanguageCounting(TokenTask):
+    def __init__(
+        self,
+        object_names: List[str] = DEFAULT_OBJECT_NAMES,
+        separator_symbol: str = " ",
+        sentence_term_symbol: str = ".",
+        verbs: List[str] = ["SEE", "HEAR", "CALL", "FEEL", "SMELL", "TOUCH"],
+        color_adj: List[str] = ["RED", "GREEN", "BLUE", "YELLOW"],
+        size_adj: List[str] = ["SMALL", "BIG", "HUGE", "TINY", "NORMAL"],
+        query_symbol: str = "?",
+        n_questions_max: int = 8,
+    ):
+        self.object_names = object_names
+        self.color_adj = color_adj
+        self.size_adj = size_adj
+        self.numbers = dict(enumerate(NUMBERS[: len(self.object_names) + 1]))
+        self.verbs = verbs
+        self.sentence_term_symbol = sentence_term_symbol
+        self.query_symbol = query_symbol
+        self.separator_symbol = separator_symbol
+        self.n_questions_max = n_questions_max
+        dictionary = object_names + verbs + color_adj + size_adj
+        dictionary += ["I", "DO", "NOT", "AND", "BUT", "WHAT", "A", "AN"]
+        dictionary += ["COLOR", "SIZE", "IS", "THE"]
+        dictionary += ["HOW", "MANY", "THINGS"]
+        dictionary += list(self.numbers.values())
+        dictionary += [query_symbol, sentence_term_symbol, "YES", "NO"]
+        super().__init__("adj-qa-ct", 0, dictionary)
+
+    def generate_tasks(self, max_n_seq: int = 10, **kwargs):
+        del kwargs
+        tasks: TaskType = []
+        mask = []
+        st = set()
+        for _ in range(max_n_seq):
+            current_mask = []
+
+            # Choose a subset of object names to work with
+            subset_size = np.random.randint(1, len(self.object_names))
+            subset: list[str] = np.random.choice(
+                self.object_names, size=subset_size, replace=False
+            ).tolist()
+            adj_subset = make_adj_objs(self.size_adj, self.color_adj, subset)
+
+            # Choose the number of verbs to use
+            n_verbs = np.random.randint(1, min(len(self.verbs), subset_size) + 1)
+            verbs: list[str] = np.random.choice(
+                self.verbs, size=n_verbs, replace=False
+            ).tolist()
+
+            name_map: Dict[str, list[list[str]]] = {}
+            indices = np.random.choice(range(len(subset)), size=n_verbs, replace=False)
+            indices = np.sort(indices)
+            for i, verb in enumerate(verbs):
+                right = len(subset) if i >= len(verbs) - 1 else indices[i + 1]
+                name_map[verb] = adj_subset[indices[i] : right]
+
+            task = []
+            yes_map: Dict[str, list[list[str]]] = {}
+            no_map: Dict[str, list[list[str]]] = {}
+            first = True
+            for verb in verbs:
+                yes_names, no_names = None, None
+                if not first:
+                    task += [self.sentence_term_symbol]
+                else:
+                    first = False
+                # Decide the yes names and the no names (may be empty)
+                yes = np.random.randint(len(name_map[verb]) + 1)
+                pre_yes_names: list[list[str]] = [
+                    name_map[verb][g]
+                    for g in np.random.choice(
+                        range(len(name_map[verb])), size=yes, replace=False
+                    )
+                ]
+                yes_map[verb] = pre_yes_names
+                if pre_yes_names:
+                    flatten_yes_names = [
+                        make_prefix(prefixed_name[0])
+                        + self.separator_symbol
+                        + " ".join(prefixed_name)
+                        for prefixed_name in pre_yes_names
+                    ]
+                    yes_names = " AND ".join(flatten_yes_names).split(" ")
+                pre_no_names = [
+                    i
+                    for i in name_map[verb]
+                    if i[0] not in [n[0] for n in pre_yes_names]
+                ]
+                no_map[verb] = pre_no_names
+                if pre_no_names:
+                    flatten_no_names = [
+                        make_prefix(prefixed_name[0])
+                        + self.separator_symbol
+                        + " ".join(prefixed_name)
+                        for prefixed_name in pre_no_names
+                    ]
+                    no_names = " AND ".join(flatten_no_names).split(" ")
+
+                # Build the sentence
+                task += make_sentence(verb, yes_names, no_names)
+
+            # Add the question part
+            question_set = set()
+            question_list = []
+            for _ in range(np.random.randint(1, self.n_questions_max)):
+                question = self.construct_question(name_map, yes_map, verbs)
+                if self.separator_symbol.join(question) not in question_set:
+                    question_set.add(self.separator_symbol.join(question))
+                    question_list.append(question)
+            for question in question_list:
+                task += question
+                # Last symbol is the one to predict
+                current_mask.append(len(task) - 1)
+
+            # Check unicity
+            task_str = self.separator_symbol.join(task)
+            if task_str not in st:
+                tasks.append(task)
+                mask.append(current_mask)
+                st.add(task_str)
+        return choose_minimal_set(tasks, max_n_seq, mask=mask)
+
+    def construct_question(
+        self,
+        name_map: dict[str, list[list[str]]],
+        yes_map: dict[str, list[list[str]]],
+        verbs: list[str],
+    ) -> list[str]:
+        # Choose which verb/name we will ask about
+        candidates = [(k, i) for k, c in yes_map.items() for i in c if len(i) > 1]
+
+        # If no possible answer has any adjective, we force the question to be YES/NO
+        if candidates:
+            question_chooser = np.random.random()
+        else:
+            question_chooser = 0
+        p_ans = 1 / (len(self.numbers) + len(self.color_adj) + len(self.size_adj) + 2)
+        if question_chooser < 2 * p_ans:
+            # YES/NO
+            question_verb = str(np.random.choice(verbs))
+            tgt: list[str] = name_map[question_verb][
+                np.random.randint(len(name_map[question_verb]))
+            ]
+            # Make the answer
+            return (
+                [self.sentence_term_symbol]
+                + ["DO", "I", question_verb, make_prefix(tgt[0])]
+                + tgt
+                + [self.query_symbol, "YES" if tgt in yes_map[question_verb] else "NO"]
+            )
+        elif question_chooser < (2 + len(self.numbers)) * p_ans:
+            # HOW MANY ...
+            question_verb = str(np.random.choice(verbs))
+            number_of_things = self.numbers[len(yes_map[question_verb])]
+            # Make the answer
+            return [self.sentence_term_symbol] + [
+                "HOW",
+                "MANY",
+                "THINGS",
+                "DO",
+                "I",
+                question_verb,
+                self.query_symbol,
+                number_of_things,
+            ]
         else:
             # Question about size or color
             question_verb, tgt = candidates[np.random.randint(len(candidates))]

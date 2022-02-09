@@ -5,6 +5,7 @@ from .language import (
     ElementaryLanguageWithWorldDef,
     ElementaryLanguageWithWorldDefCounting,
     HarderElementaryLanguage,
+    AdjectiveLanguageCounting,
 )
 from .periodic import IncreasingPeriod, Periodic, RandomPeriodic
 from .symbolic import HardSymbolCounting, SymbolCounting
@@ -38,5 +39,5 @@ __all__ = [
     "AdjectiveLanguage",
     "HybridTask",
     "TaskType",
-
+    "AdjectiveLanguageCounting",
 ]
