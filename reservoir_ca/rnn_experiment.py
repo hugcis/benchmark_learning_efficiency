@@ -100,7 +100,7 @@ class RNNExperiment:
                     [np.array(i[0])[:, None] for i in single_length_task],
                     axis=1,
                 )
-                msk = np.array([i[1] for i in single_length_task]).reshape(-1)
+                msk = [i[1] for i in single_length_task]
                 score.append(rnn.score(encoded, example, msk))
 
             return np.mean([item for l_score in score for item in l_score])
@@ -116,7 +116,7 @@ class RNNExperiment:
         results = []
         if self.training_masks is not None:
             all_tasks = [
-                (example, np.array(self.training_masks[length_idx][ex_idx]))
+                (example, [self.training_masks[length_idx][ex_idx]])
                 for length_idx, task in enumerate(self.training_tasks)
                 for ex_idx, example in enumerate(task)
             ]

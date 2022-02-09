@@ -52,6 +52,7 @@ ENUM_CHOICES = {
     "proj_type": ["one_to_one", "one_to_many", "one_to_pattern", "rewrite"],
     "ca_rule_type": ["standard", "winput", "winputonce"],
 }
+DEFAULT_DIRNAME = "experiment_results"
 
 
 def make_parser() -> argparse.ArgumentParser:
@@ -97,6 +98,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exp_dirname", default=None, type=str)
     parser.add_argument("--esn_baseline", action="store_true", default=False)
     parser.add_argument("--rnn_baseline", action="store_true", default=False)
+    parser.add_argument("--lstm_baseline", action="store_true", default=False)
     parser.add_argument("--debug", action="store_true", default=False)
     return parser
 
@@ -107,8 +109,9 @@ def init_logging(debug):
         log_level = "DEBUG"
     logging.basicConfig(
         level=log_level,
-        format="%(asctime)s | Process:%(process)d | %(filename)s | "
-        "%(levelname)s :: %(message)s",
+        format="{asctime} | Process:{process} | {levelname:>6s} | "
+        "{filename} :: {message}",
+        style="{",
     )
 
 
@@ -130,7 +133,7 @@ def init_exp(
     name: str,
     opts_extra: Dict[str, Any],
     rules: Optional[list[int]] = None,
-    exp_dirname: str = "experiment_results",
+    exp_dirname: Optional[str] = None,
 ) -> InitExp:
     """
     Initialize an experiment. This will read the command line arguments as well as the
@@ -163,7 +166,8 @@ def init_exp(
 
     logging.info("Using options %s", opts)
     logging.info("Hash is %s", opts.hashed_repr())
-    res = get_res(name, args, opts)
+
+    res = get_res(name, args, opts, exp_dirname)
     res_fn, rules = get_res_fn(args, opts, rules)
 
     # We skip if some of the rules we are processing already have the desired number of
@@ -183,15 +187,23 @@ def init_exp(
     return res, opts, rules, res_fn
 
 
-def get_res(name: str, args: argparse.Namespace, opts: ExpOptions) -> Result:
+def get_res(
+    name: str,
+    args: argparse.Namespace,
+    opts: ExpOptions,
+    exp_dirname: Optional[str] = None,
+) -> Result:
     json_opts = name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ".json")
     interm_rep = name.split("#")[0]
     base = pathlib.Path().resolve()
 
     # Command line experiment dirname overwrites the function argument
     if args.exp_dirname is not None:
-        exp_dirname = args.exp_dirname
-    out_dir = base / exp_dirname / interm_rep
+        dirname = args.exp_dirname
+    elif exp_dirname is None:
+        dirname = DEFAULT_DIRNAME
+
+    out_dir = base / dirname / interm_rep
     logging.info("Saving output to folder %s", out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -280,9 +292,14 @@ def make_esn_reservoir(
 
 
 def make_rnn(exp: RNNExperiment, opts: ExpOptions) -> RNN:
+    det = (2 * exp.output_dim) ** 2 + 4 * (
+        opts.redundancy * opts.proj_factor
+    ) * opts.r_height * exp.output_dim
+    hidden_size = int((2 * exp.output_dim + np.sqrt(det)) / 2)
+    logging.info("Equivalent RNN has hidden size %d", hidden_size)
     rnn = RNN(
         n_input=exp.output_dim,
-        hidden_size=opts.redundancy * opts.r_height * opts.proj_factor,
+        hidden_size=hidden_size,
         out_size=exp.output_dim,
     )
     return rnn

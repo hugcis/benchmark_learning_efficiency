@@ -19,14 +19,14 @@ class RNN:
 
         self.rnn = nn.RNN(n_input, self.hidden_size)
         self.linear = nn.Linear(self.hidden_size, self.out_size)
-        self.optimizer = optim.SGD(
-            chain(self.linear.parameters(), self.rnn.parameters()),
-            lr=0.01,
-            weight_decay=0.01,
-        )
-        # self.optimizer = optim.Adam(
+        # self.optimizer = optim.SGD(
         # chain(self.linear.parameters(), self.rnn.parameters()),
+        # lr=0.01,
+        # weight_decay=0.01,
         # )
+        self.optimizer = optim.Adam(
+            chain(self.linear.parameters(), self.rnn.parameters()),
+        )
         self.loss_fn = nn.CrossEntropyLoss()
         self.batch_size = batch_size
 
@@ -38,16 +38,26 @@ class RNN:
     def state_size(self):
         return self.hidden_size
 
-    def apply(self, inp: np.ndarray, mask: np.ndarray) -> torch.Tensor:
-        out, _ = self.rnn(torch.Tensor(inp))
+    def apply(self, inp: np.ndarray, mask: list[list[int]]) -> torch.Tensor:
+        """Apply the RNN.
 
-        # TODO: make the thing work with multiple masks
+        Inp: shape = (L, Batch=1, n_inputs)
+        Mask: shape = (N,)
+
+        returns:
+          Tensor: shape = (L, N, n_inputs)
+        """
+        out, _ = self.rnn(torch.Tensor(inp))
         if mask is not None:
-            msk_out = self.linear(
-                torch.cat(
-                    [out[mask[i], i, :][None, None, :] for i in range(out.shape[1])], 1
-                )
+            masked_output = torch.cat(
+                [
+                    out[t - 1 : t, i : i + 1, :]
+                    for i, s_msk in enumerate(mask)
+                    for t in s_msk
+                ],
+                1,
             )
+            msk_out = self.linear(masked_output)
         else:
             msk_out = self.linear(out[:-1])
 
@@ -55,12 +65,12 @@ class RNN:
         return msk_out
 
     def score(
-        self, inp: np.ndarray, targets: np.ndarray, mask: np.ndarray
+        self, inp: np.ndarray, targets: np.ndarray, mask: list[list[int]]
     ) -> list[float]:
         self.rnn.eval()
         msk_out = self.apply(inp, mask)
         if mask is not None:
-            tgt = np.array([targets[mask[i], i] for i in range(len(mask))])
+            tgt = np.concatenate([targets[mask[i], i] for i in range(len(mask))])
         else:
             tgt = targets[1:]
         return np.argmax(msk_out.detach().numpy(), axis=1) == tgt
@@ -71,9 +81,10 @@ class RNN:
         self.rnn.train()
         msk_out = self.apply(inp, mask)
         if mask is not None:
-            tgt = targets[mask]
+            tgt = targets[mask[0]]
         else:
             tgt = targets[1:]
+
         err = self.loss_fn(msk_out, torch.Tensor(tgt).long())
         err.backward()
         self.running_err += err.item()
