@@ -17,7 +17,7 @@ class RNN:
         self.hidden_size = hidden_size
         self.out_size = out_size
 
-        self.rnn = nn.LSTM(n_input, self.hidden_size)
+        self.rnn = nn.RNN(n_input, self.hidden_size)
         self.linear = nn.Linear(self.hidden_size, self.out_size)
         # self.optimizer = optim.SGD(
         # chain(self.linear.parameters(), self.rnn.parameters()),
@@ -76,7 +76,7 @@ class RNN:
         return np.argmax(msk_out.detach().numpy(), axis=1) == tgt
 
     def step(
-        self, inp: np.ndarray, targets: np.ndarray, mask: np.ndarray
+        self, inp: np.ndarray, targets: np.ndarray, mask: list[list[int]]
     ) -> Optional[float]:
 
         self.rnn.train()
