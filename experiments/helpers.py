@@ -11,7 +11,7 @@ import random
 import sys
 from dataclasses import asdict
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Type, Union
 
 import numpy as np
 from reservoir_ca.ca_res import CAInput, CAReservoir, CARuleType, rule_array_from_int
@@ -30,7 +30,21 @@ from tqdm import tqdm
 
 from .result import Result, ResultType
 
-ReservoirMaker = Callable[[int, Experiment, ExpOptions], Union[Reservoir, RNN]]
+AnyExp = Union[Experiment, RNNExperiment]
+Res = Union[Reservoir, RNN]
+
+
+class ReservoirMaker(Protocol):
+    def __call__(
+        self,
+        t: int,
+        exp: AnyExp,
+        opts: ExpOptions,
+        **kwargs,
+    ) -> Res:
+        pass
+
+
 InitExp = Tuple[Result, ExpOptions, List[int], ReservoirMaker]
 
 ENUM_CHOICES = {
@@ -227,13 +241,17 @@ def get_res(
 
 
 def get_res_fn(
-    args: argparse.Namespace, opts: ExpOptions, rules: list[int]
+    args: argparse.Namespace,
+    opts: ExpOptions,
+    rules: list[int],
 ) -> Tuple[ReservoirMaker, list[int]]:
+    res_fn: ReservoirMaker
     if args.esn_baseline:
         logging.info("Experiment with the ESN baseline")
 
-        def res_fn(t, exp: Experiment, opts):
-            del t
+        def res_fn(t: int, exp: AnyExp, opts: ExpOptions, **kwargs) -> Res:
+            del t, kwargs
+            assert isinstance(exp, Experiment)
             return make_esn_reservoir(ESN, exp, opts)
 
         rules = [-1]
@@ -241,20 +259,25 @@ def get_res_fn(
     elif args.rnn_baseline:
         logging.info("Experiment with the supervised RNN baseline")
 
-        def res_fn(t, exp: Experiment, opts):
+        def res_fn(t: int, exp: AnyExp, opts: ExpOptions, **kwargs) -> Res:
             del t
-            return make_rnn(exp, opts)
+            assert isinstance(exp, RNNExperiment)
+            return make_rnn(exp, opts, **kwargs)
 
         rules = [-2]
 
     elif opts.ca_rule_type == CARuleType.STANDARD:
 
-        def res_fn(t, exp: Experiment, opts):
+        def res_fn(t: int, exp: AnyExp, opts: ExpOptions, **kwargs) -> Res:
+            del kwargs
+            assert isinstance(exp, Experiment)
             return make_ca_reservoir(CAReservoir, t, exp, opts)
 
     elif opts.ca_rule_type in [CARuleType.WINPUT, CARuleType.WINPUTONCE]:
 
-        def res_fn(t, exp: Experiment, opts):
+        def res_fn(t: int, exp: AnyExp, opts: ExpOptions, **kwargs) -> Res:
+            del kwargs
+            assert isinstance(exp, Experiment)
             return make_ca_reservoir(CAInput, t, exp, opts)
 
     else:
@@ -280,7 +303,9 @@ def make_ca_reservoir(
 
 
 def make_esn_reservoir(
-    esn_class: Type[ESN], exp: Experiment, opts: ExpOptions
+    esn_class: Type[ESN],
+    exp: Experiment,
+    opts: ExpOptions,
 ) -> Reservoir:
     esn = esn_class(
         exp.output_dim,
@@ -291,11 +316,12 @@ def make_esn_reservoir(
     return esn
 
 
-def make_rnn(exp: RNNExperiment, opts: ExpOptions) -> RNN:
+def make_rnn(exp: RNNExperiment, opts: ExpOptions, **kwargs) -> RNN:
+    mult: int = kwargs.get("mult", 1)
     det = (2 * exp.output_dim) ** 2 + 4 * (
         opts.redundancy * opts.proj_factor
     ) * opts.r_height * exp.output_dim
-    hidden_size = int((2 * exp.output_dim + np.sqrt(det)) / 2)
+    hidden_size = mult * int((2 * exp.output_dim + np.sqrt(det)) / 2)
     logging.info("Equivalent RNN has hidden size %d", hidden_size)
     rnn = RNN(
         n_input=exp.output_dim,
@@ -339,14 +365,16 @@ def run_task(
                     res.update(t, exp.eval_test())
         return res.save()
     elif rules == [-2]:
-        rnn_exp = RNNExperiment(task, opts)
-        rnn = res_fn(0, rnn_exp, opts)
-        assert isinstance(rnn, RNN)
-        rnn_exp.set_rnn(rnn)
-        partial_test_results = rnn_exp.fit_with_eval()
+        for mult in [1, 10, 100]:
+            rnn_exp = RNNExperiment(task, opts)
+            rnn = res_fn(0, rnn_exp, opts, mult=mult)
+            assert isinstance(rnn, RNN)
+            rnn_exp.set_rnn(rnn)
+            partial_test_results = rnn_exp.fit_with_eval()
 
-        res.update(-2, partial_test_results[-1])
-        res.update_extra("tta", -2, partial_test_results)
+            # Save the results with index rule -2, -20, -200
+            res.update(-2 * mult, partial_test_results[-1])
+            res.update_extra("tta", -2 * mult, partial_test_results)
 
         return res.save()
     return {}, None

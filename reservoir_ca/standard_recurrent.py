@@ -12,12 +12,12 @@ class RNN:
     """The trainable RNN baseline class."""
 
     def __init__(
-        self, n_input: int, hidden_size: int, out_size: int, batch_size: int = 16
+        self, n_input: int, hidden_size: int, out_size: int, batch_size: int = 4
     ):
         self.hidden_size = hidden_size
         self.out_size = out_size
 
-        self.rnn = nn.RNN(n_input, self.hidden_size)
+        self.rnn = nn.LSTM(n_input, self.hidden_size)
         self.linear = nn.Linear(self.hidden_size, self.out_size)
         # self.optimizer = optim.SGD(
         # chain(self.linear.parameters(), self.rnn.parameters()),
@@ -78,6 +78,7 @@ class RNN:
     def step(
         self, inp: np.ndarray, targets: np.ndarray, mask: np.ndarray
     ) -> Optional[float]:
+
         self.rnn.train()
         msk_out = self.apply(inp, mask)
         if mask is not None:
