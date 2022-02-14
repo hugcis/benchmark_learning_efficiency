@@ -376,7 +376,7 @@ def run_task(
             res.update(-2 * mult, partial_test_results[-1])
             res.update_extra("tta", -2 * mult, partial_test_results)
 
-        return res.save()
+            res.save()
     return {}, None
 
 

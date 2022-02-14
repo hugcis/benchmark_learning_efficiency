@@ -11,6 +11,7 @@ matplotlib = "^3.4.3"
 tqdm = "^4.62.3"
 sklearn = "^0.0"
 torch = "^1.10.0"
+incremental_tasks = {path = "/Users/hugo/Work/incremental_tasks", develop = true}
 
 [tool.poetry.dev-dependencies]
 matplotlib = "^3.4.3"
