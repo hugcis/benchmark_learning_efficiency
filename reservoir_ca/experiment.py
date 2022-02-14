@@ -17,7 +17,7 @@ from reservoir_ca.decoders import (
     MLPClassifier,
     RandomForestClassifier,
     SGDCls,
-    CLSType
+    CLSType,
 )
 from reservoir_ca.esn_res import ESN
 from reservoir_ca.preprocessors import ConvPreprocessor, Preprocessor, ScalePreprocessor
@@ -151,6 +151,7 @@ def get_train_test_split(
 
 class Experiment:
     """An experiment with a reservoir and a task."""
+
     ca: Optional[Reservoir] = None
     preproc: Optional[Preprocessor] = None
     task: Task

@@ -14,7 +14,7 @@ class RNN:
     """The trainable RNN baseline class."""
 
     def __init__(
-        self, n_input: int, hidden_size: int, out_size: int, batch_size: int = 4
+        self, n_input: int, hidden_size: int, out_size: int, batch_size: int = 8
     ):
         self.hidden_size = hidden_size
         self.out_size = out_size
