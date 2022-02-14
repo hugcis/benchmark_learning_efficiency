@@ -7,6 +7,8 @@ import numpy as np
 import torch
 from torch import nn, optim
 
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class RNN:
     """The trainable RNN baseline class."""
@@ -19,6 +21,8 @@ class RNN:
 
         self.rnn = nn.RNN(n_input, self.hidden_size)
         self.linear = nn.Linear(self.hidden_size, self.out_size)
+        self.rnn.to(DEVICE)
+        self.linear.to(DEVICE)
         # self.optimizer = optim.SGD(
         # chain(self.linear.parameters(), self.rnn.parameters()),
         # lr=0.01,
@@ -47,7 +51,7 @@ class RNN:
         returns:
           Tensor: shape = (L, N, n_inputs)
         """
-        out, _ = self.rnn(torch.Tensor(inp))
+        out, _ = self.rnn(torch.Tensor(inp).to(DEVICE))
         if mask is not None:
             masked_output = torch.cat(
                 [
@@ -68,12 +72,13 @@ class RNN:
         self, inp: np.ndarray, targets: np.ndarray, mask: list[list[int]]
     ) -> list[float]:
         self.rnn.eval()
-        msk_out = self.apply(inp, mask)
-        if mask is not None:
-            tgt = np.concatenate([targets[mask[i], i] for i in range(len(mask))])
-        else:
-            tgt = targets[1:]
-        return np.argmax(msk_out.detach().numpy(), axis=1) == tgt
+        with torch.no_grad():
+            msk_out = self.apply(inp, mask)
+            if mask is not None:
+                tgt = np.concatenate([targets[mask[i], i] for i in range(len(mask))])
+            else:
+                tgt = targets[1:]
+            return np.argmax(msk_out.cpu().detach().numpy(), axis=1) == tgt
 
     def step(
         self, inp: np.ndarray, targets: np.ndarray, mask: list[list[int]]
