@@ -1,7 +1,8 @@
 """The supervised recurent models module."""
 import logging
+from enum import Enum
 from itertools import chain
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -10,16 +11,29 @@ from torch import nn, optim
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+class NetType(Enum):
+    RNN = 1
+    LSTM = 2
+
+
 class RNN:
     """The trainable RNN baseline class."""
 
     def __init__(
-        self, n_input: int, hidden_size: int, out_size: int, batch_size: int = 8
+        self,
+        n_input: int,
+        hidden_size: int,
+        out_size: int,
+        batch_size: int = 8,
+        net_type: NetType = NetType.RNN,
     ):
         self.hidden_size = hidden_size
         self.out_size = out_size
 
-        self.rnn = nn.RNN(n_input, self.hidden_size)
+        if net_type == NetType.RNN:
+            self.rnn: Union[nn.RNN, nn.LSTM] = nn.RNN(n_input, self.hidden_size)
+        else:
+            self.rnn = nn.LSTM(n_input, self.hidden_size)
         self.linear = nn.Linear(self.hidden_size, self.out_size)
         self.rnn.to(DEVICE)
         self.linear.to(DEVICE)

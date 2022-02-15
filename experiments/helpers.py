@@ -24,7 +24,7 @@ from reservoir_ca.experiment import (
     Reservoir,
 )
 from reservoir_ca.rnn_experiment import RNNExperiment
-from reservoir_ca.standard_recurrent import RNN
+from reservoir_ca.standard_recurrent import RNN, NetType
 from reservoir_ca.tasks import Task
 from tqdm import tqdm
 
@@ -265,6 +265,15 @@ def get_res_fn(
             return make_rnn(exp, opts, **kwargs)
 
         rules = [-2]
+    elif args.lstm_baseline:
+        logging.info("Experiment with the supervised LSTM baseline")
+
+        def res_fn(t: int, exp: AnyExp, opts: ExpOptions, **kwargs) -> Res:
+            del t
+            assert isinstance(exp, RNNExperiment)
+            return make_lstm(exp, opts, **kwargs)
+
+        rules = [-3]
 
     elif opts.ca_rule_type == CARuleType.STANDARD:
 
@@ -316,17 +325,38 @@ def make_esn_reservoir(
     return esn
 
 
+def get_eq_hidden_size(
+    out_dim: int, redundancy: int, proj_factor: int, r_height: int, mult: int = 1
+) -> int:
+    det = (2 * out_dim) ** 2 + 4 * (redundancy * proj_factor) * r_height * out_dim
+    return mult * int((2 * out_dim + np.sqrt(det)) / 2)
+
+
 def make_rnn(exp: RNNExperiment, opts: ExpOptions, **kwargs) -> RNN:
     mult: int = kwargs.get("mult", 1)
-    det = (2 * exp.output_dim) ** 2 + 4 * (
-        opts.redundancy * opts.proj_factor
-    ) * opts.r_height * exp.output_dim
-    hidden_size = mult * int((2 * exp.output_dim + np.sqrt(det)) / 2)
+    hidden_size = get_eq_hidden_size(
+        exp.output_dim, opts.redundancy, opts.proj_factor, opts.r_height, mult=mult
+    )
     logging.info("Equivalent RNN has hidden size %d", hidden_size)
     rnn = RNN(
         n_input=exp.output_dim,
         hidden_size=hidden_size,
         out_size=exp.output_dim,
+    )
+    return rnn
+
+
+def make_lstm(exp: RNNExperiment, opts: ExpOptions, **kwargs) -> RNN:
+    mult: int = kwargs.get("mult", 1)
+    hidden_size = get_eq_hidden_size(
+        exp.output_dim, opts.redundancy, opts.proj_factor, opts.r_height, mult=mult
+    )
+    logging.info("Equivalent LSTM has hidden size %d", hidden_size)
+    rnn = RNN(
+        n_input=exp.output_dim,
+        hidden_size=hidden_size,
+        out_size=exp.output_dim,
+        net_type=NetType.LSTM,
     )
     return rnn
 
@@ -365,6 +395,19 @@ def run_task(
                     res.update(t, exp.eval_test())
         return res.save()
     elif rules == [-2]:
+        for mult in [1, 10, 100]:
+            rnn_exp = RNNExperiment(task, opts)
+            rnn = res_fn(0, rnn_exp, opts, mult=mult)
+            assert isinstance(rnn, RNN)
+            rnn_exp.set_rnn(rnn)
+            partial_test_results = rnn_exp.fit_with_eval()
+
+            # Save the results with index rule -2, -20, -200
+            res.update(-2 * mult, partial_test_results[-1])
+            res.update_extra("tta", -2 * mult, partial_test_results)
+
+            res.save()
+    elif rules == [-3]:
         for mult in [1, 10, 100]:
             rnn_exp = RNNExperiment(task, opts)
             rnn = res_fn(0, rnn_exp, opts, mult=mult)
