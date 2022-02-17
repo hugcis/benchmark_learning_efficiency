@@ -379,7 +379,7 @@ def run_task(
     if opts_extra is None:
         opts_extra = {}
     res, opts, rules, res_fn = init_exp(fname, opts_extra, rules=rules)
-    if rules and rules != [-2]:
+    if rules and rules != [-2] and rules != [-3]:
         for _ in tqdm(range(opts.n_rep), miniters=10):
             exp = Experiment(task, opts)
             for t in rules:
@@ -394,30 +394,34 @@ def run_task(
                     exp.fit()
                     res.update(t, exp.eval_test())
         return res.save()
-    elif rules == [-2]:
-        for mult in [1, 10, 100]:
-            rnn_exp = RNNExperiment(task, opts)
-            rnn = res_fn(0, rnn_exp, opts, mult=mult)
-            assert isinstance(rnn, RNN)
-            rnn_exp.set_rnn(rnn)
-            partial_test_results = rnn_exp.fit_with_eval()
 
-            # Save the results with index rule -2, -20, -200
-            res.update(-2 * mult, partial_test_results[-1])
-            res.update_extra("tta", -2 * mult, partial_test_results)
+    elif rules == [-2]:
+        for mult in [1, 10]:
+            for _ in tqdm(range(opts.n_rep), miniters=10):
+                rnn_exp = RNNExperiment(task, opts)
+                rnn = res_fn(0, rnn_exp, opts, mult=mult)
+                assert isinstance(rnn, RNN)
+                rnn_exp.set_rnn(rnn)
+                partial_test_results = rnn_exp.fit_with_eval()
+
+                # Save the results with index rule -2, -20, -200
+                res.update(-2 * mult, partial_test_results[-1])
+                res.update_extra("tta", -2 * mult, partial_test_results)
 
             res.save()
-    elif rules == [-3]:
-        for mult in [1, 10, 100]:
-            rnn_exp = RNNExperiment(task, opts)
-            rnn = res_fn(0, rnn_exp, opts, mult=mult)
-            assert isinstance(rnn, RNN)
-            rnn_exp.set_rnn(rnn)
-            partial_test_results = rnn_exp.fit_with_eval()
 
-            # Save the results with index rule -2, -20, -200
-            res.update(-2 * mult, partial_test_results[-1])
-            res.update_extra("tta", -2 * mult, partial_test_results)
+    elif rules == [-3]:
+        for mult in [1, 10]:
+            for _ in tqdm(range(opts.n_rep), miniters=10):
+                rnn_exp = RNNExperiment(task, opts)
+                rnn = res_fn(0, rnn_exp, opts, mult=mult)
+                assert isinstance(rnn, RNN)
+                rnn_exp.set_rnn(rnn)
+                partial_test_results = rnn_exp.fit_with_eval()
+
+                # Save the results with index rule -2, -20, -200
+                res.update(-3 * mult, partial_test_results[-1])
+                res.update_extra("tta", -3 * mult, partial_test_results)
 
             res.save()
     return {}, None

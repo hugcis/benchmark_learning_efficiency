@@ -238,7 +238,9 @@ class SGDCls(BaseEstimator, ClassifierMixin):
     def __init__(self, verbose: bool = False, cls_type: CLSType = CLSType.SGD):
         self.verbose = verbose
         if cls_type == CLSType.SGD:
-            self.sgd = SGDClassifier(learning_rate="constant", eta0=0.001, alpha=0.001)
+            self.sgd = SGDClassifier(
+                learning_rate="constant", eta0=0.001, alpha=0.001, loss="log"
+            )
         else:
             self.sgd = AdamClassifier()
         self.test_values: List[float] = []

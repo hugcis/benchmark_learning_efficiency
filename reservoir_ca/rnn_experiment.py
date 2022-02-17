@@ -103,6 +103,9 @@ class RNNExperiment:
                 msk = [i[1] for i in single_length_task]
                 score.append(rnn.score(encoded, example, msk))
 
+            # rnn.score return a list of bools for the whole batch
+            # We flatten this list of lists into a single bool list and compute
+            # the mean to get accuracy
             return np.mean([item for l_score in score for item in l_score])
         else:
             raise ValueError(
