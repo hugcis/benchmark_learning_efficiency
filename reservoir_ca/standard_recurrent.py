@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch import nn, optim
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cpu")
 
 
 class NetType(Enum):
