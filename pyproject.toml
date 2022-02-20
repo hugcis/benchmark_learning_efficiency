@@ -13,7 +13,8 @@ sklearn = "^0.0"
 torch = "^1.10.0"
 incremental_tasks = {path = "../incremental_tasks", develop = true}
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
+seaborn = "^0.11.2"
 matplotlib = "^3.4.3"
 jupyter = "^1.0.0"
 jupyterlab = "^3.2.2"
