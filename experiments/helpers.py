@@ -42,7 +42,7 @@ class ReservoirMaker(Protocol):
         opts: ExpOptions,
         **kwargs,
     ) -> Res:
-        pass
+        raise NotImplementedError
 
 
 InitExp = Tuple[Result, ExpOptions, List[int], ReservoirMaker]
@@ -106,14 +106,42 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--return-name", default=False, action="store_true")
     parser.add_argument("--increment-data", default=False, action="store_true")
     parser.add_argument("--results-file-name", type=str, default=None)
-    parser.add_argument("--rules", nargs="+", default=list(range(256)))
-    parser.add_argument("--seed", type=int, default=84923)
-    parser.add_argument("--no-write", action="store_true", default=False)
+    parser.add_argument(
+        "--rules",
+        nargs="+",
+        default=list(range(256)),
+        help="A list of rules to experiment with for the reservoir CA. "
+        "This is ignored when one of the options --esn_baseline, "
+        "--lstm_basline or --rnn_baseline is set.",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=84923, help="Random seed for reproducibility"
+    )
+    parser.add_argument(
+        "--pretrain-for",
+        type=int,
+        default=None,
+        help="Number of steps to unsupervisedly pretrain the models for.",
+    )
+    parser.add_argument(
+        "--no-write",
+        action="store_true",
+        default=False,
+        help="Do not write the results to a file",
+    )
     parser.add_argument("--exp_dirname", default=None, type=str)
-    parser.add_argument("--esn_baseline", action="store_true", default=False)
+    parser.add_argument(
+        "--esn_baseline",
+        action="store_true",
+        default=False,
+        help="Run the echo-state network basline model (mutually exclusive "
+        "with RNN and LSTM baselines)",
+    )
     parser.add_argument("--rnn_baseline", action="store_true", default=False)
     parser.add_argument("--lstm_baseline", action="store_true", default=False)
-    parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument(
+        "--debug", action="store_true", default=False, help="Print debug information"
+    )
     return parser
 
 
@@ -184,8 +212,8 @@ def init_exp(
     res = get_res(name, args, opts, exp_dirname)
     res_fn, rules = get_res_fn(args, opts, rules)
 
-    # We skip if some of the rules we are processing already have the desired number of
-    # experimental results.
+    # We skip if some of the rules we are processing already have the desired
+    # number of experimental results.
     if args.increment_data:
         dic = res.read()
         new_rules = [r for r in rules if dic.get(r, 0) < opts.n_rep]
@@ -216,6 +244,8 @@ def get_res(
         dirname = args.exp_dirname
     elif exp_dirname is None:
         dirname = DEFAULT_DIRNAME
+    else:
+        dirname = exp_dirname
 
     out_dir = base / dirname / interm_rep
     logging.info("Saving output to folder %s", out_dir)
@@ -245,7 +275,6 @@ def get_res_fn(
     opts: ExpOptions,
     rules: list[int],
 ) -> Tuple[ReservoirMaker, list[int]]:
-    res_fn: ReservoirMaker
     if args.esn_baseline:
         logging.info("Experiment with the ESN baseline")
 
@@ -374,11 +403,13 @@ def run_task(
     """
     task = task_cls(*cls_args)
     if fname is None:
-        fname = task.name + "#.pkl"
+        task_fname: str = task.name + "#.pkl"
+    else:
+        task_fname = fname
 
     if opts_extra is None:
         opts_extra = {}
-    res, opts, rules, res_fn = init_exp(fname, opts_extra, rules=rules)
+    res, opts, rules, res_fn = init_exp(task_fname, opts_extra, rules=rules)
     if rules and rules != [-2] and rules != [-3]:
         for _ in tqdm(range(opts.n_rep), miniters=10):
             exp = Experiment(task, opts)
