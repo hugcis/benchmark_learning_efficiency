@@ -260,15 +260,28 @@ class Experiment:
         ca, _ = self.check_ca()
         all_data = []
         all_tgts = []
-        # We loop across all the length groupings found
+        # Initialize the CA state
         state = np.zeros((1, ca.state_size), dtype=int)
+
+        # "Pretraining"
+        if self.pretrain_tasks is not None:
+            for l_idx, task_l in enumerate(self.pretrain_tasks):
+                for b in range(task_l.shape[0]):
+                    for t in range(task_l.shape[1] - 1):
+                        inp = to_dim_one_hot(task_l[b : b + 1, t], self.output_dim)
+                        _, state = ca(state, inp)
+
+        # We loop across all the length groupings found
         for l_idx, task_l in enumerate(tasks):
-            single_length_data = []
-            single_length_tgts = []
-            # task_l is of dimension `batch x (length of sequence)`
+            logging.debug(
+                "Processing %d tasks of length %d", task_l.shape[0], task_l.shape[1]
+            )
             for b in range(task_l.shape[0]):
+                single_length_data = []
+                single_length_tgts = []
+                # task_l is of dimension `batch x (length of sequence)`
                 for t in range(task_l.shape[1] - 1):
-                    inp = to_dim_one_hot(task_l[b:b+1, t], self.output_dim)
+                    inp = to_dim_one_hot(task_l[b : b + 1, t], self.output_dim)
 
                     output, state = ca(state, inp)  # The CA outputs a vector of
                     # size (batch x r_height x state_size)
@@ -296,6 +309,9 @@ class Experiment:
         # all_data is a list of vectors of shape (n_example x 1 x r_height x
         # state_size) if masked and (n_example x length_grp x r_height x
         # state_size) if not masked
+        logging.debug(
+            "Processed all %d examples", sum(i.shape[0] * i.shape[1] for i in all_data)
+        )
         return all_data, all_tgts
 
     def shape_for_preproc(self, all_data: list[np.ndarray]) -> np.ndarray:
@@ -366,6 +382,7 @@ class Experiment:
 
     def fit_with_eval(self) -> list[float]:
         """Fit the regressor with evaluation checkpoints and return eval values."""
+        logging.debug("Fitting a model with periodic evaluations")
         if isinstance(self.reg, SGDCls):
             _, preproc = self.check_ca()
             all_data, all_tgts = self.process_tasks(
