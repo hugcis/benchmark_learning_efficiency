@@ -4,10 +4,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from reservoir_ca.reservoir import RState
+from reservoir_ca.reservoir.base import RState, Reservoir
 
 
-class ESN:
+class ESN(Reservoir):
     def __init__(
         self,
         inp_size: int,

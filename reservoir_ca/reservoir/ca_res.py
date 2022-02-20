@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from reservoir_ca.reservoir import RState
+from reservoir_ca.reservoir.base import Reservoir, RState
 
 
 class ProjectionType(Enum):
@@ -53,7 +53,7 @@ def validate_rule(rule: int, n_size: int, n_states: int, check_input: bool = Fal
     return rule < n_possible_rules
 
 
-class CAReservoir:
+class CAReservoir(Reservoir):
     """
     The cellular automaton reservoir.
 
@@ -190,6 +190,7 @@ class CAReservoir:
         # The input is encoded into the current state via the input function
         mod_state = self.input_function(inp, self.proj_matrix, state)
         output = np.zeros((inp.shape[0], self.r_height, self.state_size))
+
         # We apply r_height steps of the CA
         for i in range(self.r_height):
             mod_state = self.apply_rule(mod_state)
@@ -248,9 +249,7 @@ class CAInput(CAReservoir):
                 np.roll(state, -1, axis=1) + 2 * state + 4 * np.roll(state, 1, axis=1)
             ]
 
-    def __call__(
-        self, state: np.ndarray, inp: np.ndarray
-    ) -> Tuple[np.ndarray, RState]:
+    def __call__(self, state: np.ndarray, inp: np.ndarray) -> Tuple[np.ndarray, RState]:
         assert state.shape[1] == self.state_size
         assert inp.shape[1] == self.inp_size
         projected_inp = (inp @ self.proj_matrix).astype(int)
