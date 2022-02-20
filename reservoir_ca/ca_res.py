@@ -3,6 +3,8 @@ from typing import Optional, Tuple
 
 import numpy as np
 
+from reservoir_ca.reservoir import RState
+
 
 class ProjectionType(Enum):
     ONE_TO_ONE = 1
@@ -92,6 +94,7 @@ class CAReservoir:
         self.proj_matrix = self.set_proj_matrix()
 
         if self.proj_type is ProjectionType.REWRITE:
+
             def inp_fn(inp, projection_matrix, state):
                 projected_inp = inp @ projection_matrix
                 inv_projected_inp = (1 - inp) @ projection_matrix
@@ -100,7 +103,9 @@ class CAReservoir:
                 state[inv_projected_inp > 0] = 0
 
                 return state
+
         else:
+
             def inp_fn(inp, projection_matrix, state):
                 projected_inp = inp @ projection_matrix
                 return np.logical_xor(projected_inp, state)
@@ -178,9 +183,7 @@ class CAReservoir:
             np.roll(state, -1, axis=1) + 2 * state + 4 * np.roll(state, 1, axis=1)
         ]
 
-    def __call__(
-        self, state: np.ndarray, inp: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def __call__(self, state: RState, inp: np.ndarray) -> Tuple[np.ndarray, RState]:
         assert state.shape[1] == self.state_size
         assert inp.shape[1] == self.inp_size
 
@@ -247,7 +250,7 @@ class CAInput(CAReservoir):
 
     def __call__(
         self, state: np.ndarray, inp: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, RState]:
         assert state.shape[1] == self.state_size
         assert inp.shape[1] == self.inp_size
         projected_inp = (inp @ self.proj_matrix).astype(int)

@@ -4,10 +4,17 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from reservoir_ca.reservoir import RState
+
 
 class ESN:
-    def __init__(self, inp_size: int, redundancy: int = 4,
-                 r_height: int = 2, proj_factor: int = 40):
+    def __init__(
+        self,
+        inp_size: int,
+        redundancy: int = 4,
+        r_height: int = 2,
+        proj_factor: int = 40,
+    ):
         self.proj_factor = proj_factor
         self.redundancy = redundancy
         self.r_height = r_height
@@ -18,7 +25,9 @@ class ESN:
         wg_mask = torch.rand(wg_shape) < 10 / wg_shape[1]
 
         self.rnn.weight_hh.data = torch.Tensor((2 * torch.rand(wg_shape) - 1) * wg_mask)
-        self.rnn.weight_ih.data = torch.Tensor(2 * torch.rand(self.rnn.weight_ih.data.shape) - 1)
+        self.rnn.weight_ih.data = torch.Tensor(
+            2 * torch.rand(self.rnn.weight_ih.data.shape) - 1
+        )
 
     @property
     def state_size(self) -> int:
@@ -28,7 +37,7 @@ class ESN:
     def output_size(self) -> int:
         return self.state_size
 
-    def __call__(self, state: np.ndarray, inp: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def __call__(self, state: np.ndarray, inp: np.ndarray) -> Tuple[np.ndarray, RState]:
         mod_state = self.rnn(torch.Tensor(inp), torch.Tensor(state))
         output = mod_state[:, None, :]
 

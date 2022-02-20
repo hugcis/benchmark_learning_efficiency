@@ -22,6 +22,7 @@ from reservoir_ca.decoders import (
 from reservoir_ca.esn_res import ESN
 from reservoir_ca.preprocessors import ConvPreprocessor, Preprocessor, ScalePreprocessor
 from reservoir_ca.tasks import BinarizedTask, Mask, Task, TokenTask, TaskType
+from reservoir_ca.reservoir import RState
 
 
 class RegType(Enum):
@@ -129,6 +130,7 @@ def group_by_lens(
     return grouped_seqs, grouped_masks if masks is not None else None
 
 
+# TODO: Put reservoir in an ABC because __call__ have common signature
 Reservoir = Union[CAReservoir, ESN]
 
 
@@ -153,6 +155,49 @@ def get_train_test_split(
         train_masks, test_masks = None, None
 
     return train_seqs, train_masks, test_seqs, test_masks
+
+
+
+
+def compute_single_length(
+    idx: int,
+    task_l: np.ndarray,
+    output_dim: int,
+    ca: Reservoir,
+    state: RState,
+    masks: Mask,
+    batched: Optional[int] = None,
+) -> Tuple[np.ndarray, np.ndarray, RState]:
+    single_length_data = []
+    single_length_tgts = []
+    # task_l is of dimension `batch x (length of sequence)`
+    for t in range(task_l.shape[1] - 1):
+        if batched is not None:
+            inp_base = task_l[batched : batched + 1, t]
+        else:
+            inp_base = task_l[:, t]
+        inp = to_dim_one_hot(inp_base, output_dim)
+
+        output, state = ca(state, inp)  # The CA outputs a vector of
+        # size (batch x r_height x state_size)
+
+        if masks is not None:
+            # Apply masking separatly for each item of the batch
+            for q in range(output.shape[0]):
+                if t + 1 in masks[idx][q]:
+                    single_length_data.append(output[q : q + 1, None, :, :])
+                    single_length_tgts.append(task_l[q : q + 1, t + 1])
+        else:
+            # Just add the whole output if not masking
+            single_length_data.append(output[:, None, :, :])
+
+    if masks is None:
+        single_length_data_arr = np.concatenate(single_length_data, axis=1)
+        single_length_tgts_arr = task_l[b, 1:]
+    else:
+        single_length_data_arr = np.concatenate(single_length_data, axis=0)
+        single_length_tgts_arr = np.concatenate(single_length_tgts, axis=0)
+    return single_length_data_arr, single_length_tgts_arr, state
 
 
 class Experiment:
@@ -260,8 +305,9 @@ class Experiment:
         ca, _ = self.check_ca()
         all_data = []
         all_tgts = []
+
         # Initialize the CA state
-        state = np.zeros((1, ca.state_size), dtype=int)
+        state = RState(np.zeros((1, ca.state_size), dtype=int))
 
         # "Pretraining"
         if self.pretrain_tasks is not None:
@@ -277,32 +323,13 @@ class Experiment:
                 "Processing %d tasks of length %d", task_l.shape[0], task_l.shape[1]
             )
             for b in range(task_l.shape[0]):
-                single_length_data = []
-                single_length_tgts = []
-                # task_l is of dimension `batch x (length of sequence)`
-                for t in range(task_l.shape[1] - 1):
-                    inp = to_dim_one_hot(task_l[b : b + 1, t], self.output_dim)
-
-                    output, state = ca(state, inp)  # The CA outputs a vector of
-                    # size (batch x r_height x state_size)
-
-                    if masks is not None:
-                        # Apply masking separatly for each item of the batch
-                        for q in range(output.shape[0]):
-                            if t + 1 in masks[l_idx][q]:
-                                single_length_data.append(output[q : q + 1, None, :, :])
-                                single_length_tgts.append(task_l[q : q + 1, t + 1])
-                    else:
-                        # Just add the whole output if not masking
-                        single_length_data.append(output[:, None, :, :])
-
-                if masks is None:
-                    single_length_data_arr = np.concatenate(single_length_data, axis=1)
-                    single_length_tgts_arr = task_l[b, 1:]
-                else:
-                    single_length_data_arr = np.concatenate(single_length_data, axis=0)
-                    single_length_tgts_arr = np.concatenate(single_length_tgts, axis=0)
-
+                (
+                    single_length_data_arr,
+                    single_length_tgts_arr,
+                    state,
+                ) = compute_single_length(
+                    l_idx, task_l, self.output_dim, ca, state, masks, batched=b
+                )
                 all_data.append(single_length_data_arr)
                 all_tgts.append(single_length_tgts_arr)
 
