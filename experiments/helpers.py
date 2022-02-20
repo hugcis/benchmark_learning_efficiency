@@ -14,14 +14,14 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Type, Union
 
 import numpy as np
-from reservoir_ca.ca_res import CAInput, CAReservoir, CARuleType, rule_array_from_int
-from reservoir_ca.esn_res import ESN
-from reservoir_ca.experiment import (
-    Experiment,
-    ExpOptions,
-    ProjectionType,
-    RegType,
+from reservoir_ca.experiment import Experiment, ExpOptions, ProjectionType, RegType
+from reservoir_ca.reservoir import (
+    ESN,
+    CAInput,
+    CAReservoir,
+    CARuleType,
     Reservoir,
+    rule_array_from_int,
 )
 from reservoir_ca.rnn_experiment import RNNExperiment
 from reservoir_ca.standard_recurrent import RNN, NetType
@@ -415,8 +415,10 @@ def run_task(
             exp = Experiment(task, opts)
             for t in rules:
                 reservoir = res_fn(t, exp, opts)
-                assert not isinstance(reservoir, RNN)
-                exp.set_reservoir(reservoir)
+                if isinstance(reservoir, RNN):
+                    raise ValueError
+                else:
+                    exp.set_reservoir(reservoir)
                 if opts.reg_type in [RegType.SGDCLS, RegType.ADAMCLS]:
                     partial_test_results = exp.fit_with_eval()
                     res.update(t, partial_test_results[-1])

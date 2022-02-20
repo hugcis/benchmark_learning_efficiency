@@ -1,28 +1,26 @@
-import logging
 import dataclasses
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Tuple, Union, Dict
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from reservoir_ca.ca_res import CAReservoir, CARuleType, ProjectionType
 from reservoir_ca.decoders import (
     SVC,
+    CLSType,
     ConvClassifier,
     LinearSVC,
     LogisticRegression,
     MLPClassifier,
     RandomForestClassifier,
     SGDCls,
-    CLSType,
 )
-from reservoir_ca.esn_res import ESN
 from reservoir_ca.preprocessors import ConvPreprocessor, Preprocessor, ScalePreprocessor
-from reservoir_ca.tasks import BinarizedTask, Mask, Task, TokenTask, TaskType
-from reservoir_ca.reservoir import RState
+from reservoir_ca.reservoir import CARuleType, ProjectionType, Reservoir, RState
+from reservoir_ca.tasks import BinarizedTask, Mask, Task, TaskType, TokenTask
 
 
 class RegType(Enum):
@@ -130,12 +128,12 @@ def group_by_lens(
     return grouped_seqs, grouped_masks if masks is not None else None
 
 
-# TODO: Put reservoir in an ABC because __call__ have common signature
-Reservoir = Union[CAReservoir, ESN]
+def convert_single_task_to_num(task: list[str], dic: Dict[str, int]) -> list[int]:
+    return [dic[k] for k in task]
 
 
 def convert_task_to_num(tasks: TaskType, dic: Dict[str, int]) -> NumTaskType:
-    return [[dic[k] for k in task] for task in tasks]
+    return [convert_single_task_to_num(task, dic) for task in tasks]
 
 
 def get_train_test_split(
@@ -157,15 +155,13 @@ def get_train_test_split(
     return train_seqs, train_masks, test_seqs, test_masks
 
 
-
-
 def compute_single_length(
     idx: int,
     task_l: np.ndarray,
     output_dim: int,
     ca: Reservoir,
     state: RState,
-    masks: Mask,
+    masks: Optional[GroupedMasks],
     batched: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray, RState]:
     single_length_data = []
@@ -193,7 +189,7 @@ def compute_single_length(
 
     if masks is None:
         single_length_data_arr = np.concatenate(single_length_data, axis=1)
-        single_length_tgts_arr = task_l[b, 1:]
+        single_length_tgts_arr = task_l[batched, 1:]
     else:
         single_length_data_arr = np.concatenate(single_length_data, axis=0)
         single_length_tgts_arr = np.concatenate(single_length_tgts, axis=0)
@@ -264,17 +260,8 @@ class Experiment:
         self.shuffle = True
 
         # Pretraining options
-        if exp_options.pretrain_for > 0:
-            self.pretrain_tasks, _ = group_by_lens(
-                convert_task_to_num(
-                    self.task.generate_tasks(
-                        seq_len=exp_options.seq_len, max_n_seq=exp_options.pretrain_for
-                    ),
-                    self.dic,
-                )
-            )
-        else:
-            self.pretrain_tasks = None
+        self.pretrain_for = exp_options.pretrain_for
+        self.pretrained_state = None
 
     @property
     def output_dim(self) -> int:
@@ -310,12 +297,22 @@ class Experiment:
         state = RState(np.zeros((1, ca.state_size), dtype=int))
 
         # "Pretraining"
-        if self.pretrain_tasks is not None:
-            for l_idx, task_l in enumerate(self.pretrain_tasks):
-                for b in range(task_l.shape[0]):
-                    for t in range(task_l.shape[1] - 1):
-                        inp = to_dim_one_hot(task_l[b : b + 1, t], self.output_dim)
-                        _, state = ca(state, inp)
+        if self.pretrain_for > 0 and self.pretrained_state is None:
+            logging.debug("Doing pretraining for %d steps", self.pretrain_for)
+            # We use the generator version since it is designed to be used with
+            # large numbers that couldn't fit into memory
+            for task, _ in self.task.generate_tasks_generator(
+                max_n_seq=self.pretrain_for
+            ):
+                inp = to_dim_one_hot(
+                    np.array(convert_single_task_to_num(task, self.dic)),
+                    self.output_dim,
+                )
+                for step in inp:
+                    _, state = ca(state, step[None, :])
+            self.pretrained_state = state[:]
+        elif self.pretrained_state is not None:
+            state = self.pretrained_state[:]
 
         # We loop across all the length groupings found
         for l_idx, task_l in enumerate(tasks):
