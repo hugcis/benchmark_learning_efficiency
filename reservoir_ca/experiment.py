@@ -77,6 +77,7 @@ class ExpOptions:
     binarized_task: bool = False
     proj_type: ProjectionType = ProjectionType.ONE_TO_ONE
     proj_pattern: int = 4
+    pretrain_for: int = 0
     ca_rule_type: CARuleType = CARuleType.STANDARD
 
     def to_json(self, filter_out: Optional[List[str]] = ["seed"]):
@@ -131,13 +132,18 @@ def group_by_lens(
 Reservoir = Union[CAReservoir, ESN]
 
 
+def convert_task_to_num(tasks: TaskType, dic: Dict[str, int]) -> NumTaskType:
+    return [[dic[k] for k in task] for task in tasks]
+
+
 def get_train_test_split(
     tasks: TaskType, masks: Mask, dic: Dict[str, int], ignore_mask: bool
 ) -> Tuple[NumTaskType, Mask, NumTaskType, Mask]:
     # Split into a training and testing set
     split = np.random.permutation(range(len(tasks)))
-    train_seqs = [[dic[k] for k in tasks[i]] for i in split[: int(0.8 * len(tasks))]]
-    test_seqs = [[dic[k] for k in tasks[i]] for i in split[int(0.8 * len(tasks)) :]]
+    num_tasks = convert_task_to_num(tasks, dic)
+    train_seqs = [num_tasks[i] for i in split[: int(0.8 * len(tasks))]]
+    test_seqs = [num_tasks[i] for i in split[int(0.8 * len(tasks)) :]]
 
     # For masked tasks compute masks
     if masks is not None and not ignore_mask:
@@ -192,12 +198,15 @@ class Experiment:
             raise ValueError("Task cannot be binarized")
         else:
             self.task = task
+
+        # Generate the tasks
         tasks, masks = self.task.generate_tasks(
             seq_len=exp_options.seq_len, max_n_seq=exp_options.max_n_seq
         )
 
         self.dic = {d: n for n, d in enumerate(self.task.dictionary)}
 
+        # Split tasks into training/testing
         train_seqs, train_masks, test_seqs, test_masks = get_train_test_split(
             tasks, masks, self.dic, self.opts.ignore_mask
         )
@@ -208,6 +217,19 @@ class Experiment:
         )
         self.testing_tasks, self.testing_masks = group_by_lens(test_seqs, test_masks)
         self.shuffle = True
+
+        # Pretraining options
+        if exp_options.pretrain_for > 0:
+            self.pretrain_tasks, _ = group_by_lens(
+                convert_task_to_num(
+                    self.task.generate_tasks(
+                        seq_len=exp_options.seq_len, max_n_seq=exp_options.pretrain_for
+                    ),
+                    self.dic,
+                )
+            )
+        else:
+            self.pretrain_tasks = None
 
     @property
     def output_dim(self) -> int:
@@ -239,36 +261,37 @@ class Experiment:
         all_data = []
         all_tgts = []
         # We loop across all the length groupings found
+        state = np.zeros((1, ca.state_size), dtype=int)
         for l_idx, task_l in enumerate(tasks):
             single_length_data = []
             single_length_tgts = []
             # task_l is of dimension `batch x (length of sequence)`
-            state = np.zeros((task_l.shape[0], ca.state_size), dtype=int)
-            for t in range(task_l.shape[1] - 1):
-                inp = to_dim_one_hot(task_l[:, t], self.output_dim)
+            for b in range(task_l.shape[0]):
+                for t in range(task_l.shape[1] - 1):
+                    inp = to_dim_one_hot(task_l[b:b+1, t], self.output_dim)
 
-                output, state = ca(state, inp)  # The CA outputs a vector of
-                # size (batch x r_height x state_size)
+                    output, state = ca(state, inp)  # The CA outputs a vector of
+                    # size (batch x r_height x state_size)
 
-                if masks is not None:
-                    # Apply masking separatly for each item of the batch
-                    for q in range(output.shape[0]):
-                        if t + 1 in masks[l_idx][q]:
-                            single_length_data.append(output[q : q + 1, None, :, :])
-                            single_length_tgts.append(task_l[q : q + 1, t + 1])
+                    if masks is not None:
+                        # Apply masking separatly for each item of the batch
+                        for q in range(output.shape[0]):
+                            if t + 1 in masks[l_idx][q]:
+                                single_length_data.append(output[q : q + 1, None, :, :])
+                                single_length_tgts.append(task_l[q : q + 1, t + 1])
+                    else:
+                        # Just add the whole output if not masking
+                        single_length_data.append(output[:, None, :, :])
+
+                if masks is None:
+                    single_length_data_arr = np.concatenate(single_length_data, axis=1)
+                    single_length_tgts_arr = task_l[b, 1:]
                 else:
-                    # Just add the whole output if not masking
-                    single_length_data.append(output[:, None, :, :])
+                    single_length_data_arr = np.concatenate(single_length_data, axis=0)
+                    single_length_tgts_arr = np.concatenate(single_length_tgts, axis=0)
 
-            if masks is None:
-                single_length_data_arr = np.concatenate(single_length_data, axis=1)
-                single_length_tgts_arr = task_l[:, 1:]
-            else:
-                single_length_data_arr = np.concatenate(single_length_data, axis=0)
-                single_length_tgts_arr = np.concatenate(single_length_tgts, axis=0)
-
-            all_data.append(single_length_data_arr)
-            all_tgts.append(single_length_tgts_arr)
+                all_data.append(single_length_data_arr)
+                all_tgts.append(single_length_tgts_arr)
 
         # all_data is a list of vectors of shape (n_example x 1 x r_height x
         # state_size) if masked and (n_example x length_grp x r_height x
