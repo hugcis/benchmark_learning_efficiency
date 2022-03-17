@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Union, Tuple
 from collections import namedtuple
-from reservoir_ca.reservoir.ca_res import CAInputFeedback, rule_array_from_int
+from reservoir_ca.reservoir.ca_res import CAInputFeedback
 from reservoir_ca.reservoir import RState
 from reservoir_ca.evo.es import SimpleGA
 from incremental_tasks.symbolic import SymbolCounting
@@ -84,9 +84,10 @@ def evaluate_dna(
             if train_masks is not None and n + 1 in train_masks[k]:
                 total += 1
                 result = softmax(state @ out)
+                reward += np.log(result[0, s[n + 1]]) / result.shape[0]
+
                 if result.argmax() == s[n + 1]:
                     err = np.eye(3)[np.array([1])]
-                    reward += 1
                     if return_state:
                         results.append((result[:], s[n + 1]))
                 else:
