@@ -182,12 +182,12 @@ class SimpleGA:
         num_params,  # number of model parameters
         num_bin_params,  # number of model parameters
         sigma_init=0.1,  # initial standard deviation
-        sigma_decay=0.999,  # anneal standard deviation
-        sigma_limit=0.01,  # stop annealing if less than this
+        sigma_decay=0.9999,  # anneal standard deviation
+        sigma_limit=0.02,  # stop annealing if less than this
         popsize=256,  # population size
         elite_ratio=0.1,  # percentage of the elites
         forget_best=False,  # forget the historical best elites
-        weight_decay=0.01,  # weight decay coefficient
+        weight_decay=0.005,  # weight decay coefficient
     ):
 
         self.num_params = num_params
