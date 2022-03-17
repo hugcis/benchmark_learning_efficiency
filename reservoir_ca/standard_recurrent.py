@@ -37,11 +37,6 @@ class RNN:
         self.linear = nn.Linear(self.hidden_size, self.out_size)
         self.rnn.to(DEVICE)
         self.linear.to(DEVICE)
-        # self.optimizer = optim.SGD(
-        # chain(self.linear.parameters(), self.rnn.parameters()),
-        # lr=0.01,
-        # weight_decay=0.01,
-        # )
         self.optimizer = optim.Adam(
             chain(self.linear.parameters(), self.rnn.parameters()),
         )

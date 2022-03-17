@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List
+from typing import Iterable
 
 import numpy as np
 from sklearn.preprocessing import StandardScaler
@@ -20,7 +20,7 @@ class ConvPreprocessor(Preprocessor):
         self.r_height = r_height
         self.state_size = state_size
 
-    def reshape_vec(self, X: List[np.ndarray]):
+    def reshape_vec(self, X: Iterable[np.ndarray]):
         return [v.reshape(-1, self.r_height, self.state_size) for v in X]
 
     def fit(self, X):

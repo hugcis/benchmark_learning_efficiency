@@ -29,8 +29,8 @@ __all__ = [
 
 
 class ExperimentData(torch.utils.data.Dataset):
-    def __init__(self, X: np.ndarray, y: np.ndarray):
-        self.X = X
+    def __init__(self, x: np.ndarray, y: np.ndarray):
+        self.X = x
         self.y = y
 
     def __len__(self):

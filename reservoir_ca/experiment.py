@@ -4,7 +4,8 @@ import json
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Union
+import typing
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -78,12 +79,15 @@ class ExpOptions:
     proj_pattern: int = 4
     pretrain_for: int = 0
     ca_rule_type: CARuleType = CARuleType.STANDARD
+    feedback_state: bool = False
 
-    def to_json(self, filter_out: Optional[List[str]] = ["seed"]):
+    def to_json(self, filter_out: Optional[Iterable[str]] = None):
         dict_rep = dataclasses.asdict(self)
-        if filter_out is not None:
-            for s in filter_out:
-                dict_rep.pop(s)
+        if filter_out is None:
+            filter_out = ["seed"]
+        for s in filter_out:
+            dict_rep.pop(s)
+
         for s in dict_rep:
             if isinstance(dict_rep[s], Enum):
                 dict_rep[s] = dict_rep[s].name
@@ -202,6 +206,7 @@ class Experiment:
     ca: Optional[Reservoir] = None
     preproc: Optional[Preprocessor] = None
     task: Task
+    pretrained_state: Optional[RState]
 
     def __init__(
         self,
@@ -263,6 +268,7 @@ class Experiment:
         self.pretrain_for = exp_options.pretrain_for
         self.pretrained_state = None
 
+
     @property
     def output_dim(self) -> int:
         return self.task.output_dimension()
@@ -310,22 +316,37 @@ class Experiment:
                 )
                 for step in inp:
                     _, state = ca(state, step[None, :])
-            self.pretrained_state = state[:]
+            self.pretrained_state = RState(state[:])
         elif self.pretrained_state is not None:
-            state = self.pretrained_state[:]
+            state = RState(self.pretrained_state[:])
 
         # We loop across all the length groupings found
         for l_idx, task_l in enumerate(tasks):
             logging.debug(
                 "Processing %d tasks of length %d", task_l.shape[0], task_l.shape[1]
             )
-            for b in range(task_l.shape[0]):
+            # Pretraining implies feeback_state = True
+            if self.opts.feedback_state or self.pretrain_for > 0:
+                # We need to step through the batch in sequence
+                for b in range(task_l.shape[0]):
+                    (
+                        single_length_data_arr,
+                        single_length_tgts_arr,
+                        state,
+                    ) = compute_single_length(
+                        l_idx, task_l, self.output_dim, ca, state, masks, batched=b
+                    )
+                    all_data.append(single_length_data_arr)
+                    all_tgts.append(single_length_tgts_arr)
+            else:
+                # Initialize the CA state every step
+                state = RState(np.zeros((task_l.shape[0], ca.state_size), dtype=int))
                 (
                     single_length_data_arr,
                     single_length_tgts_arr,
                     state,
                 ) = compute_single_length(
-                    l_idx, task_l, self.output_dim, ca, state, masks, batched=b
+                    l_idx, task_l, self.output_dim, ca, state, masks
                 )
                 all_data.append(single_length_data_arr)
                 all_tgts.append(single_length_tgts_arr)
@@ -338,7 +359,7 @@ class Experiment:
         )
         return all_data, all_tgts
 
-    def shape_for_preproc(self, all_data: list[np.ndarray]) -> np.ndarray:
+    def shape_for_preproc(self, all_data: Iterable[np.ndarray]) -> np.ndarray:
         dt_list = [c.reshape(-1, c.shape[-2], c.shape[-1]) for c in all_data]
         return np.concatenate(dt_list, axis=0)
 
@@ -380,8 +401,9 @@ class Experiment:
         """Output the test set predictions for that experiment."""
         _, preproc = self.check_ca()
         all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
-        prediction = self.reg.predict(
-            preproc.transform(self.shape_for_preproc(all_data))
+        prediction = typing.cast(
+            np.ndarray,
+            self.reg.predict(preproc.transform(self.shape_for_preproc(all_data))),
         )
         if return_target:
             return (
@@ -398,11 +420,11 @@ class Experiment:
         """
         _, preproc = self.check_ca()
         all_data, all_tgts = self.process_tasks(self.testing_tasks, self.testing_masks)
-
-        return self.reg.score(
+        score = self.reg.score(
             preproc.transform(np.concatenate(all_data, axis=0)),
             np.concatenate([c.reshape(-1) for c in all_tgts], axis=0),
         )
+        return typing.cast(float, score)
 
     def fit_with_eval(self) -> list[float]:
         """Fit the regressor with evaluation checkpoints and return eval values."""
