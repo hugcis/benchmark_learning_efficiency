@@ -173,7 +173,7 @@ if __name__ == "__main__":
         candidates = ga.ask()
         rews = []
         dnas = [candidate_to_dna(candidate) for candidate in candidates]
-        results = Parallel(n_jobs=8, verbose=1)(
+        results = Parallel(n_jobs=56, verbose=1)(
             delayed(process_dna)(dna) for dna in dnas
         )
         ga.tell(results)
