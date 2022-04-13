@@ -168,7 +168,7 @@ if __name__ == "__main__":
     num_bin_params = dna.rule_array.size + dna.proj_in.size + dna.proj_err.size
     ga = SimpleGA(num_params, num_bin_params, popsize=256)
 
-    for i in range(100):
+    for i in range(500):
         print(f"generation {i}")
         candidates = ga.ask()
         rews = []
