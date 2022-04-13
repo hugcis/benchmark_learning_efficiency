@@ -16,7 +16,9 @@ parser.add_argument("--from-path", type=argparse.FileType("rb"), default=None)
 parser.add_argument("--select", nargs="*", type=str)
 
 
-def candidate_to_dna(candidate: Tuple[np.ndarray, np.ndarray]) -> Dna:
+def candidate_to_dna(
+    dna: Dna, candidate: Tuple[np.ndarray, np.ndarray], fixed: Dict[str, np.ndarray]
+) -> Dna:
     binary, continuous = candidate
     r_array = binary[: dna.rule_array.size].reshape(dna.rule_array.shape)
     proj_in = binary[
@@ -31,7 +33,10 @@ def candidate_to_dna(candidate: Tuple[np.ndarray, np.ndarray]) -> Dna:
 
     out = continuous[: dna.out.size].reshape(dna.out.shape)
     bias = continuous[dna.out.size :].reshape(dna.bias.shape)
-    return Dna(r_array, proj_in, proj_err, out, bias)
+    ret_dna = Dna(r_array, proj_in, proj_err, out, bias)
+    for key, val in fixed.items():
+        setattr(ret_dna, key, val)
+    return ret_dna
 
 
 def ca_from_dna(dna, inp_size):
@@ -146,9 +151,15 @@ def process_dna(dna: Dna):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    select: list[str] = args.select
+    fixed = {}
+    data = {}
     if (pth := args.from_path) is not None:
         data: Dict[str, np.ndarray] = pkl.load(pth)
-    select: list[str] = args.select
+        if select:
+            for s in select:
+                dict_name, last_name = s.split("=")
+                fixed[last_name] = data[dict_name]
 
     tsk = SymbolCounting([35], dictionary=["A", "B", "C", "D", "E"])
     inp_size = tsk.output_dimension()
@@ -174,10 +185,10 @@ if __name__ == "__main__":
         print(f"generation {i}")
         candidates = ga.ask()
         rews = []
-        dnas = [candidate_to_dna(candidate) for candidate in candidates]
+        dnas = [candidate_to_dna(dna, candidate, fixed) for candidate in candidates]
         results = Parallel(n_jobs=56, verbose=1)(
             delayed(process_dna)(dna) for dna in dnas
         )
         ga.tell(results)
-        eval_best = elite_accuracy(candidate_to_dna(ga.best_param))
+        eval_best = elite_accuracy(candidate_to_dna(dna, ga.best_param, fixed))
         print(ga.best_reward, eval_best)
