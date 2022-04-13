@@ -1,9 +1,11 @@
+import pickle as pkl
 import dataclasses
 import hashlib
 import json
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 import typing
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
@@ -21,6 +23,7 @@ from reservoir_ca.decoders import (
 )
 from reservoir_ca.preprocessors import ConvPreprocessor, Preprocessor, ScalePreprocessor
 from reservoir_ca.reservoir import CARuleType, ProjectionType, Reservoir, RState
+from reservoir_ca.reservoir.ca_res import CAReservoir
 from reservoir_ca.tasks import BinarizedTask, Mask, Task, TaskType, TokenTask
 
 
@@ -268,7 +271,6 @@ class Experiment:
         self.pretrain_for = exp_options.pretrain_for
         self.pretrained_state = None
 
-
     @property
     def output_dim(self) -> int:
         return self.task.output_dimension()
@@ -460,3 +462,17 @@ class Experiment:
             raise ValueError("Regressor type should be SGD to evaluate during fit")
 
         return self.reg.test_values
+
+    def save_params(self, name: Path):
+        if not isinstance(self.reg, SGDCls):
+            raise ValueError("Parameter saving is only possible with the SGD regressor")
+        reg_params = self.reg.params()
+        params_obj: Dict[str, np.ndarray] = {
+            "out.weight": reg_params[0],
+            "out.bias": reg_params[1],
+        }
+        if isinstance(self.ca, CAReservoir):
+            params_obj.update(self.ca.params())
+
+        with open(name, "wb") as f:
+            pkl.dump(params_obj, f)

@@ -1,6 +1,6 @@
 """The CA reservoir."""
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 
@@ -204,6 +204,12 @@ class CAReservoir(Reservoir):
             np.roll(state, -1, axis=1) + 2 * state + 4 * np.roll(state, 1, axis=1)
         ]
 
+    def params(self) -> Dict[str, np.ndarray]:
+        return {
+            "ca.proj": self.proj_matrix,
+            "ca.rule": self.rule_array,
+        }
+
     def __call__(self, state: RState, inp: np.ndarray) -> Tuple[np.ndarray, RState]:
         assert state.shape[1] == self.state_size
         assert inp.shape[1] == self.inp_size
@@ -351,7 +357,7 @@ class CAInputFeedback(CAReservoir):
             ]
 
     def __call__(
-            self, state: RState, inp: np.ndarray, last_error: np.ndarray
+        self, state: RState, inp: np.ndarray, last_error: np.ndarray
     ) -> Tuple[np.ndarray, RState]:
         assert state.shape[1] == self.state_size
         assert inp.shape[1] == self.inp_size

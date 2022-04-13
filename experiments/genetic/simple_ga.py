@@ -1,5 +1,7 @@
+import argparse
+import pickle as pkl
 import numpy as np
-from typing import Union, Tuple
+from typing import Dict, Union, Tuple
 from collections import namedtuple
 from reservoir_ca.reservoir.ca_res import CAInputFeedback
 from reservoir_ca.reservoir import RState
@@ -7,22 +9,14 @@ from reservoir_ca.evo.es import SimpleGA
 from incremental_tasks.symbolic import SymbolCounting
 from joblib import Parallel, delayed
 
-Dna = namedtuple("DNA", ["rule_array", "proj_in", "proj_err", "out"])
-tsk = SymbolCounting([35], dictionary=["A", "B", "C", "D", "E"])
-inp_size = tsk.output_dimension()
-ca_rule = np.random.randint(0, 2**32)
-
-ca = CAInputFeedback(ca_rule, inp_size, r_height=1, redundancy=10)
-dna = Dna(
-    ca.rule_array,
-    ca.proj_matrix,
-    ca.err_proj_matrix,
-    (np.random.random(size=(ca.state_size, inp_size)) - 0.5)
-    * (2 / np.sqrt(ca.state_size)),
-)
+Dna = namedtuple("DNA", ["rule_array", "proj_in", "proj_err", "out", "bias"])
+# Dna = namedtuple("DNA", ["rule_array", "proj_err"])
+parser = argparse.ArgumentParser()
+parser.add_argument("--from-path", type=argparse.FileType("rb"), default=None)
+parser.add_argument("--select", nargs="*", type=str)
 
 
-def candidate_to_dna(candidate) -> Dna:
+def candidate_to_dna(candidate: Tuple[np.ndarray, np.ndarray]) -> Dna:
     binary, continuous = candidate
     r_array = binary[: dna.rule_array.size].reshape(dna.rule_array.shape)
     proj_in = binary[
@@ -35,8 +29,9 @@ def candidate_to_dna(candidate) -> Dna:
         + dna.proj_err.size
     ].reshape(dna.proj_err.shape)
 
-    out = continuous.reshape(dna.out.shape)
-    return Dna(r_array, proj_in, proj_err, out)
+    out = continuous[: dna.out.size].reshape(dna.out.shape)
+    bias = continuous[dna.out.size :].reshape(dna.bias.shape)
+    return Dna(r_array, proj_in, proj_err, out, bias)
 
 
 def ca_from_dna(dna, inp_size):
@@ -53,16 +48,59 @@ def softmax(x):
     return t / t.sum()
 
 
+def elite_accuracy(dna: Dna):
+    inp_size = tsk.output_dimension()
+    n_examples = 200
+    sentences, masks = tsk.generate_tasks(n_examples)
+    token_mapping = dict(zip(tsk.dictionary, range(len(tsk.dictionary))))
+
+    sentences = sentences
+    sentences_mapped = [[token_mapping[i] for i in c] for c in sentences]
+
+    reward = 0
+    total = 0
+    ca = ca_from_dna(dna, inp_size)
+    state = RState(np.zeros((1, ca.state_size), dtype=int))
+    err = np.eye(3)[np.array([0])]
+
+    out = dna.out
+    bias = dna.bias
+
+    ct = 0
+    correct = 0
+    for k, s in enumerate(sentences_mapped):
+        one_hot = np.eye(inp_size)[s]
+        for n, i in enumerate(one_hot):
+            _, state = ca(state, i[None, :], err)
+            if masks is not None and n + 1 in masks[k]:
+                total += 1
+                result = softmax(state @ out + bias)
+                reward += np.log(result[0, s[n + 1]]) / result.shape[0]
+                ct += 1
+                if result.argmax() == s[n + 1]:
+                    err = np.eye(3)[np.array([1])]
+                    correct += 1
+                else:
+                    err = np.eye(3)[np.array([2])]
+            else:
+                err = np.eye(3)[np.array([0])]
+    return correct / ct
+
+
 def evaluate_dna(
     dna: Dna, return_state: bool = False
 ) -> Union[float, Tuple[int, int, np.ndarray, list[Tuple[str]]]]:
     inp_size = tsk.output_dimension()
-    sentences, masks = tsk.generate_tasks(1200)
+    n_examples = 1200
+    sentences, masks = tsk.generate_tasks(n_examples)
     token_mapping = dict(zip(tsk.dictionary, range(len(tsk.dictionary))))
+
     train_sentences = sentences
     train_sentences_mapped = [[token_mapping[i] for i in c] for c in train_sentences]
+
     # test_sentences = sentences[cutoff:]
     # test_sentences_mapped = [[token_mapping[i] for i in c] for c in test_sentences]
+
     train_masks = masks
     # test_masks = masks[cutoff:]
 
@@ -73,6 +111,8 @@ def evaluate_dna(
     err = np.eye(3)[np.array([0])]
 
     out = dna.out
+    bias = dna.bias
+
     all_states = []
     results = []
     for k, s in enumerate(train_sentences_mapped):
@@ -83,7 +123,7 @@ def evaluate_dna(
                 all_states.append(state.copy())
             if train_masks is not None and n + 1 in train_masks[k]:
                 total += 1
-                result = softmax(state @ out)
+                result = softmax(state @ out + bias)
                 reward += np.log(result[0, s[n + 1]]) / result.shape[0]
 
                 if result.argmax() == s[n + 1]:
@@ -100,21 +140,42 @@ def evaluate_dna(
         return reward / total
 
 
-num_params = dna.out.reshape(-1).size
-num_bin_params = dna.rule_array.size + dna.proj_in.size + dna.proj_err.size
-ga = SimpleGA(num_params, num_bin_params, popsize=256)
+def process_dna(dna: Dna):
+    return evaluate_dna(dna)
 
 
-def process_candidate(candidate):
-    return evaluate_dna(candidate_to_dna(candidate))
+if __name__ == "__main__":
+    args = parser.parse_args()
+    if (pth := args.from_path) is not None:
+        data: Dict[str, np.ndarray] = pkl.load(pth)
+    select: list[str] = args.select
 
+    tsk = SymbolCounting([35], dictionary=["A", "B", "C", "D", "E"])
+    inp_size = tsk.output_dimension()
+    ca_rule = np.random.randint(0, 2**32)
 
-for i in range(100):
-    print(f"generation {i}")
-    candidates = ga.ask()
-    rews = []
-    results = Parallel(n_jobs=8, verbose=1)(
-        delayed(process_candidate)(candidate) for candidate in candidates
+    ca = CAInputFeedback(ca_rule, inp_size, r_height=1, redundancy=10)
+    dna = Dna(
+        ca.rule_array,
+        ca.proj_matrix,
+        ca.err_proj_matrix,
+        (np.random.random(size=(ca.state_size, inp_size)) - 0.5)
+        * (2 / np.sqrt(ca.state_size)),
+        (np.random.random(size=inp_size) - 0.5) * 2.0,
     )
-    ga.tell(results)
-    print(ga.best_reward)
+
+    num_params = dna.out.reshape(-1).size + dna.bias.size
+    num_bin_params = dna.rule_array.size + dna.proj_in.size + dna.proj_err.size
+    ga = SimpleGA(num_params, num_bin_params, popsize=256)
+
+    for i in range(100):
+        print(f"generation {i}")
+        candidates = ga.ask()
+        rews = []
+        dnas = [candidate_to_dna(candidate) for candidate in candidates]
+        results = Parallel(n_jobs=8, verbose=1)(
+            delayed(process_dna)(dna) for dna in dnas
+        )
+        ga.tell(results)
+        eval_best = elite_accuracy(candidate_to_dna(ga.best_param))
+        print(ga.best_reward, eval_best)

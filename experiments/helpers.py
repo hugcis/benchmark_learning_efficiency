@@ -45,7 +45,7 @@ class ReservoirMaker(Protocol):
         raise NotImplementedError
 
 
-InitExp = Tuple[Result, ExpOptions, List[int], ReservoirMaker]
+InitExp = Tuple[Result, ExpOptions, List[int], ReservoirMaker, bool, pathlib.Path]
 
 ENUM_CHOICES = {
     "reg_type": [
@@ -142,6 +142,12 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--debug", action="store_true", default=False, help="Print debug information"
     )
+    parser.add_argument(
+        "--save-params",
+        action="store_true",
+        default=False,
+        help="Save the parameters of the experiment",
+    )
     return parser
 
 
@@ -209,7 +215,7 @@ def init_exp(
     logging.info("Using options %s", opts)
     logging.info("Hash is %s", opts.hashed_repr())
 
-    res = get_res(name, args, opts, exp_dirname)
+    res, save_path = get_res(name, args, opts, exp_dirname)
     res_fn, rules = get_res_fn(args, opts, rules)
 
     # We skip if some of the rules we are processing already have the desired
@@ -226,7 +232,7 @@ def init_exp(
     random.seed(seed)
     np.random.seed(seed)
 
-    return res, opts, rules, res_fn
+    return res, opts, rules, res_fn, args.save_params, save_path
 
 
 def get_res(
@@ -234,7 +240,7 @@ def get_res(
     args: argparse.Namespace,
     opts: ExpOptions,
     exp_dirname: Optional[str] = None,
-) -> Result:
+) -> Tuple[Result, pathlib.Path]:
     json_opts = name.replace("#", f"_{opts.hashed_repr()}").replace(".pkl", ".json")
     interm_rep = name.split("#")[0]
     base = pathlib.Path().resolve()
@@ -265,9 +271,12 @@ def get_res(
     extra_fname = name.replace("#", f"_extra_{opts.hashed_repr()}")
     extra_path = out_dir / pathlib.Path(extra_fname)
 
+    save_path = out_dir / "weights"
+    save_path.mkdir(parents=True, exist_ok=True)
+
     res = Result(path, opts_path, counts_path, extra_path, no_write=args.no_write)
 
-    return res
+    return res, save_path
 
 
 def get_res_fn(
@@ -409,9 +418,12 @@ def run_task(
 
     if opts_extra is None:
         opts_extra = {}
-    res, opts, rules, res_fn = init_exp(task_fname, opts_extra, rules=rules)
+    res, opts, rules, res_fn, save_params, save_path = init_exp(
+        task_fname, opts_extra, rules=rules
+    )
+    logging.info("Saving output params in %s", save_path)
     if rules and rules != [-2] and rules != [-3]:
-        for _ in tqdm(range(opts.n_rep), miniters=10):
+        for it in tqdm(range(opts.n_rep), miniters=10):
             exp = Experiment(task, opts)
             for t in rules:
                 reservoir = res_fn(t, exp, opts)
@@ -426,6 +438,8 @@ def run_task(
                 else:
                     exp.fit()
                     res.update(t, exp.eval_test())
+            if save_params:
+                exp.save_params(save_path / f"weights_{it}.pth")
         return res.save()
 
     elif rules == [-2]:

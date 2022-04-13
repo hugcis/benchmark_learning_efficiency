@@ -1,7 +1,7 @@
 """The decoders for reading and predicting outputs from the reservoirs."""
 import logging
 from enum import Enum
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -271,3 +271,14 @@ class SGDCls(BaseEstimator, ClassifierMixin):
     def predict(self, X):
         check_is_fitted(self)
         return self.sgd.predict(X)
+
+    def params(self) -> Tuple[np.ndarray, np.ndarray]:
+        if isinstance(self.sgd, SGDClassifier):
+            return (self.sgd.coef_, self.sgd.intercept_)
+        elif self.sgd.linear is not None:
+            return (
+                self.sgd.linear.weight.data.numpy(),
+                self.sgd.linear.bias.data.numpy(),
+            )
+        else:
+            raise ValueError("Uninitialized classifier")
