@@ -14,6 +14,7 @@ Dna = namedtuple("DNA", ["rule_array", "proj_in", "proj_err", "out", "bias"])
 parser = argparse.ArgumentParser()
 parser.add_argument("--from-path", type=argparse.FileType("rb"), default=None)
 parser.add_argument("--select", nargs="*", type=str)
+parser.add_argument("--n-jobs", type=int, default=8)
 
 
 def candidate_to_dna(
@@ -160,6 +161,7 @@ if __name__ == "__main__":
             for s in select:
                 dict_name, last_name = s.split("=")
                 fixed[last_name] = data[dict_name]
+    print("Fixing", fixed.keys())
 
     tsk = SymbolCounting([35], dictionary=["A", "B", "C", "D", "E"])
     inp_size = tsk.output_dimension()
@@ -186,7 +188,7 @@ if __name__ == "__main__":
         candidates = ga.ask()
         rews = []
         dnas = [candidate_to_dna(dna, candidate, fixed) for candidate in candidates]
-        results = Parallel(n_jobs=56, verbose=1)(
+        results = Parallel(n_jobs=args.n_jobs, verbose=1)(
             delayed(process_dna)(dna) for dna in dnas
         )
         ga.tell(results)
