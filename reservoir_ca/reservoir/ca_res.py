@@ -197,6 +197,7 @@ class CAReservoir(Reservoir):
 
     @property
     def output_size(self) -> int:
+        """The total size of the repeated CA state for output processing."""
         return self.state_size * self.r_height
 
     def apply_rule(self, state: np.ndarray):

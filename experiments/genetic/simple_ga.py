@@ -14,6 +14,7 @@ Dna = namedtuple("DNA", ["rule_array", "proj_in", "proj_err", "out", "bias"])
 parser = argparse.ArgumentParser()
 parser.add_argument("--from-path", type=argparse.FileType("rb"), default=None)
 parser.add_argument("--select", nargs="*", type=str)
+parser.add_argument("--popsize", type=int, default=256)
 parser.add_argument("--n-jobs", type=int, default=8)
 
 
@@ -21,22 +22,27 @@ def candidate_to_dna(
     dna: Dna, candidate: Tuple[np.ndarray, np.ndarray], fixed: Dict[str, np.ndarray]
 ) -> Dna:
     binary, continuous = candidate
-    r_array = binary[: dna.rule_array.size].reshape(dna.rule_array.shape)
-    proj_in = binary[
+    args_dict = {}
+    args_dict["rule_array"] = binary[: dna.rule_array.size].reshape(dna.rule_array.shape)
+    args_dict["proj_in"] = binary[
         dna.rule_array.size : dna.rule_array.size + dna.proj_in.size
     ].reshape(dna.proj_in.shape)
-    proj_err = binary[
+    args_dict["proj_err"] = binary[
         dna.rule_array.size
         + dna.proj_in.size : dna.rule_array.size
         + dna.proj_in.size
         + dna.proj_err.size
     ].reshape(dna.proj_err.shape)
 
-    out = continuous[: dna.out.size].reshape(dna.out.shape)
-    bias = continuous[dna.out.size :].reshape(dna.bias.shape)
-    ret_dna = Dna(r_array, proj_in, proj_err, out, bias)
+    args_dict["out"] = continuous[: dna.out.size].reshape(dna.out.shape)
+    args_dict["bias"] = continuous[dna.out.size :].reshape(dna.bias.shape)
     for key, val in fixed.items():
-        setattr(ret_dna, key, val)
+        sh = args_dict[key].shape
+        orig = args_dict[key].reshape(-1)
+        orig[:val.size] = val.reshape(-1)
+        args_dict[key] = orig.reshape(sh)
+
+    ret_dna = Dna(**args_dict)
     return ret_dna
 
 
@@ -77,10 +83,11 @@ def elite_accuracy(dna: Dna):
     for k, s in enumerate(sentences_mapped):
         one_hot = np.eye(inp_size)[s]
         for n, i in enumerate(one_hot):
+            output, state = ca(state, i[None, :], err)
             _, state = ca(state, i[None, :], err)
             if masks is not None and n + 1 in masks[k]:
                 total += 1
-                result = softmax(state @ out + bias)
+                result = softmax(output.reshape(-1)[None, :] @ out + bias)
                 reward += np.log(result[0, s[n + 1]]) / result.shape[0]
                 ct += 1
                 if result.argmax() == s[n + 1]:
@@ -124,12 +131,12 @@ def evaluate_dna(
     for k, s in enumerate(train_sentences_mapped):
         one_hot = np.eye(inp_size)[s]
         for n, i in enumerate(one_hot):
-            _, state = ca(state, i[None, :], err)
+            output, state = ca(state, i[None, :], err)
             if return_state:
                 all_states.append(state.copy())
             if train_masks is not None and n + 1 in train_masks[k]:
                 total += 1
-                result = softmax(state @ out + bias)
+                result = softmax(output.reshape(-1)[None, :] @ out + bias)
                 reward += np.log(result[0, s[n + 1]]) / result.shape[0]
 
                 if result.argmax() == s[n + 1]:
@@ -174,14 +181,14 @@ if __name__ == "__main__":
         ca.rule_array,
         ca.proj_matrix,
         ca.err_proj_matrix,
-        (np.random.random(size=(ca.state_size, inp_size)) - 0.5)
+        (np.random.random(size=(ca.output_size, inp_size)) - 0.5)
         * (2 / np.sqrt(ca.state_size)),
         (np.random.random(size=inp_size) - 0.5) * 2.0,
     )
 
     num_params = dna.out.reshape(-1).size + dna.bias.size
     num_bin_params = dna.rule_array.size + dna.proj_in.size + dna.proj_err.size
-    ga = SimpleGA(num_params, num_bin_params, popsize=256)
+    ga = SimpleGA(num_params, num_bin_params, popsize=args.popsize)
 
     for i in range(500):
         print(f"generation {i}")
