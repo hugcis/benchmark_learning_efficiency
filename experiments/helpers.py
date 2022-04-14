@@ -271,7 +271,7 @@ def get_res(
     extra_fname = name.replace("#", f"_extra_{opts.hashed_repr()}")
     extra_path = out_dir / pathlib.Path(extra_fname)
 
-    save_path = out_dir / "weights"
+    save_path = out_dir / f"weights_{opts.hashed_repr()}"
     save_path.mkdir(parents=True, exist_ok=True)
 
     res = Result(path, opts_path, counts_path, extra_path, no_write=args.no_write)
