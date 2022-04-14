@@ -168,7 +168,7 @@ if __name__ == "__main__":
     ca_rule = np.random.randint(0, 2**32)
 
     ca = CAInputFeedback(
-        ca_rule, inp_size, r_height=1, redundancy=12, proj_factor=60, proj_pattern=4
+        ca_rule, inp_size, r_height=2, redundancy=12, proj_factor=60, proj_pattern=4
     )
     dna = Dna(
         ca.rule_array,
