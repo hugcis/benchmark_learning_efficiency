@@ -196,7 +196,7 @@ if __name__ == "__main__":
         rews = []
         dnas = [candidate_to_dna(dna, candidate, fixed) for candidate in candidates]
         results = Parallel(n_jobs=args.n_jobs, verbose=1)(
-            delayed(process_dna)(dna) for dna in dnas
+            delayed(process_dna)(dn) for dn in dnas
         )
         ga.tell(results)
         eval_best = elite_accuracy(candidate_to_dna(dna, ga.best_param, fixed))
