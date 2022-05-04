@@ -3,9 +3,9 @@ import logging
 import os
 import pickle as pkl
 import pathlib
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, Optional, Tuple, Any, List
 
-ResultType = Tuple[Dict[int, list[float]], Optional[Dict[str, Dict[int, list[Any]]]]]
+ResultType = Tuple[Dict[int, List[float]], Optional[Dict[str, Dict[int, List[Any]]]]]
 
 # This is a very hack-it-yourself way to implement file locking in Python. I
 # would prefer a proper library
@@ -37,7 +37,7 @@ except ModuleNotFoundError:
         msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, file_size(f))
 
 
-def atomic_write_to_path(path: pathlib.Path, data: Dict[Any, list[Any]]):
+def atomic_write_to_path(path: pathlib.Path, data: Dict[Any, List[Any]]):
     if path.exists():
         with AtomicOpen(path, "rb+") as f:
             prev = pkl.loads(f.read())
@@ -103,8 +103,8 @@ class Result:
 
     """
 
-    res: Dict[int, list[float]]
-    res_extra: Dict[str, Dict[int, list[Any]]]
+    res: Dict[int, List[float]]
+    res_extra: Dict[str, Dict[int, List[Any]]]
 
     def __init__(
         self,

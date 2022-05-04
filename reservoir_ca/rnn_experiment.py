@@ -2,7 +2,7 @@
 such as RNNs.
 """
 import logging
-from typing import Optional
+from typing import Optional, List
 
 import numpy as np
 
@@ -79,7 +79,7 @@ class RNNExperiment:
 
     def validation_score(self) -> float:
         rnn = self.check_rnn()
-        score: list[list[float]] = []
+        score: List[List[float]] = []
         if self.testing_masks is not None:
             all_tasks = [
                 [
@@ -113,7 +113,7 @@ class RNNExperiment:
                 "do not use the option --ignore_mask"
             )
 
-    def fit_with_eval(self) -> list[float]:
+    def fit_with_eval(self) -> List[float]:
         rnn = self.check_rnn()
         best_reached = False
         results = []

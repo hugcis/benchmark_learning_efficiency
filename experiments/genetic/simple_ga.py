@@ -1,7 +1,7 @@
 import argparse
 import pickle as pkl
 import numpy as np
-from typing import Dict, Union, Tuple
+from typing import Dict, Union, Tuple, List
 from collections import namedtuple
 from reservoir_ca.reservoir.ca_res import CAInputFeedback
 from reservoir_ca.reservoir import RState
@@ -102,7 +102,7 @@ def elite_accuracy(dna: Dna):
 
 def evaluate_dna(
     dna: Dna, return_state: bool = False
-) -> Union[float, Tuple[int, int, np.ndarray, list[Tuple[str]]]]:
+) -> Union[float, Tuple[int, int, np.ndarray, List[Tuple[str]]]]:
     inp_size = tsk.output_dimension()
     n_examples = 1200
     sentences, masks = tsk.generate_tasks(n_examples)
@@ -159,7 +159,7 @@ def process_dna(dna: Dna):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    select: list[str] = args.select
+    select: List[str] = args.select
     fixed = {}
     data = {}
     if (pth := args.from_path) is not None:

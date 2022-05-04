@@ -180,7 +180,7 @@ def set_opts_from_args(opts: ExpOptions, args: argparse.Namespace) -> ExpOptions
 def init_exp(
     name: str,
     opts_extra: Dict[str, Any],
-    rules: Optional[list[int]] = None,
+    rules: Optional[List[int]] = None,
     exp_dirname: Optional[str] = None,
 ) -> InitExp:
     """
@@ -282,8 +282,8 @@ def get_res(
 def get_res_fn(
     args: argparse.Namespace,
     opts: ExpOptions,
-    rules: list[int],
-) -> Tuple[ReservoirMaker, list[int]]:
+    rules: List[int],
+) -> Tuple[ReservoirMaker, List[int]]:
     if args.esn_baseline:
         logging.info("Experiment with the ESN baseline")
 
@@ -495,6 +495,6 @@ class RuleOptimizer:
         else:
             self.initial_rule = rule_array_from_int(initial_rule, 1, check_input=True)
 
-    def mutate_rule(self) -> list[list[int]]:
+    def mutate_rule(self) -> List[List[int]]:
 
         return []

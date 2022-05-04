@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List
 import numpy as np
 from abc import ABC, abstractmethod
 
@@ -175,7 +175,7 @@ def mate(a: Tuple[np.ndarray, np.ndarray], b: Tuple[np.ndarray, np.ndarray]):
 class SimpleGA:
     """Simple Genetic Algorithm."""
 
-    elite_params: list[Tuple[np.ndarray, np.ndarray]]
+    elite_params: List[Tuple[np.ndarray, np.ndarray]]
 
     def __init__(
         self,
@@ -227,7 +227,7 @@ class SimpleGA:
             )
             for _ in range(self.popsize)
         ]
-        solutions: list[Tuple[np.ndarray, np.ndarray]] = []
+        solutions: List[Tuple[np.ndarray, np.ndarray]] = []
 
         elite_range = range(self.elite_popsize)
         for i in range(self.popsize):
