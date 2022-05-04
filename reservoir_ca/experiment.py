@@ -135,7 +135,7 @@ def group_by_lens(
     return grouped_seqs, grouped_masks if masks is not None else None
 
 
-def convert_single_task_to_num(task: list[str], dic: Dict[str, int]) -> list[int]:
+def convert_single_task_to_num(task: List[str], dic: Dict[str, int]) -> List[int]:
     return [dic[k] for k in task]
 
 
@@ -428,7 +428,7 @@ class Experiment:
         )
         return typing.cast(float, score)
 
-    def fit_with_eval(self) -> list[float]:
+    def fit_with_eval(self) -> List[float]:
         """Fit the regressor with evaluation checkpoints and return eval values."""
         logging.debug("Fitting a model with periodic evaluations")
         if isinstance(self.reg, SGDCls):
