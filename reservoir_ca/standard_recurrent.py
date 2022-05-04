@@ -2,7 +2,7 @@
 import logging
 from enum import Enum
 from itertools import chain
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 import numpy as np
 import torch
@@ -51,7 +51,7 @@ class RNN:
     def state_size(self):
         return self.hidden_size
 
-    def apply(self, inp: np.ndarray, mask: list[list[int]]) -> torch.Tensor:
+    def apply(self, inp: np.ndarray, mask: List[List[int]]) -> torch.Tensor:
         """Apply the RNN.
 
         Inp: shape = (L, Batch=1, n_inputs)
@@ -78,8 +78,8 @@ class RNN:
         return msk_out
 
     def score(
-        self, inp: np.ndarray, targets: np.ndarray, mask: list[list[int]]
-    ) -> list[float]:
+        self, inp: np.ndarray, targets: np.ndarray, mask: List[List[int]]
+    ) -> List[float]:
         self.rnn.eval()
         with torch.no_grad():
             msk_out = self.apply(inp, mask)
@@ -90,7 +90,7 @@ class RNN:
             return np.argmax(msk_out.cpu().detach().numpy(), axis=1) == tgt
 
     def step(
-        self, inp: np.ndarray, targets: np.ndarray, mask: list[list[int]]
+        self, inp: np.ndarray, targets: np.ndarray, mask: List[List[int]]
     ) -> Optional[float]:
 
         self.rnn.train()
