@@ -5,7 +5,7 @@ description = ""
 authors = ["hugcis <hmj.cisneros@gmail.com>"]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.11"
+python = ">=3.8,<3.11"
 numpy = "^1.21.4"
 matplotlib = "^3.4.3"
 tqdm = "^4.62.3"
