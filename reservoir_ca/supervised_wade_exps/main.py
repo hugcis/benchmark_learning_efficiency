@@ -124,7 +124,7 @@ if __name__ == "__main__":
 
                     val_error /= len(test_inputs)
                     val_accuracy /= len(test_inputs)
-                    print(n_steps, val_accuracy)
+                    print("Steps:", n_steps, "Accuracy:", val_accuracy)
                     all_accuracies.append((n_steps, val_accuracy))
 
-    pkl.dump(all_accuracies, open(args.output_file, "wb"))
+    pkl.dump((all_accuracies, vars(args)), open(args.output_file, "wb"))
