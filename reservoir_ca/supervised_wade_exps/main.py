@@ -19,7 +19,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--batch-size", type=int, default=8)
-parser.add_argument("--epochs", type=int, default=1)
+parser.add_argument("--epochs", type=int, default=10)
 parser.add_argument("--embed-size", type=int, default=128)
 parser.add_argument("--hidden-size", type=int, default=256)
 parser.add_argument("--subset", type=float, default=1.0)
