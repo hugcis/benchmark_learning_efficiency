@@ -1,28 +1,32 @@
 import argparse
 import itertools
+import pickle as pkl
 
 import numpy as np
 import torch
-from torch import optim
-from torch.nn.modules.loss import BCELoss, CrossEntropyLoss
-from torch.nn.modules.transformer import Transformer
 from reservoir_ca.supervised_wade_exps.dataset import (
     get_tokenized_dataset,
     get_tokenizer,
     get_train_test_sets,
 )
 from reservoir_ca.supervised_wade_exps.model import Recurrent
+from torch import optim
+from torch.nn.modules.loss import BCELoss, CrossEntropyLoss
+from torch.nn.modules.transformer import Transformer
 from torch.nn.utils.rnn import pad_sequence
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--batch-size", type=int, default=8)
 parser.add_argument("--epochs", type=int, default=1)
-parser.add_argument("--embed-size", type=int, default=100)
-parser.add_argument("--hidden-size", type=int, default=100)
+parser.add_argument("--embed-size", type=int, default=128)
+parser.add_argument("--hidden-size", type=int, default=256)
 parser.add_argument("--subset", type=float, default=1.0)
 parser.add_argument(
     "--model", type=str, default="RNN", choices=["RNN", "LSTM", "GRU", "Transformer"]
 )
+parser.add_argument("--output-file", type=str, default="output.pkl")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -45,16 +49,21 @@ if __name__ == "__main__":
         )
     else:
         model = Transformer()
+
+    model.to(device)
     loss = CrossEntropyLoss()
     opt = optim.Adam(model.parameters())
 
     eval_batch_size = 128
+
     tokenized_test = get_tokenized_dataset(test_iter, tokenizer)
-    test_inputs = [torch.Tensor(i[0]).long() for i in tokenized_test]
-    test_labels = torch.Tensor([i[1] for i in tokenized_test]).long()
+    test_inputs = [torch.Tensor(i[0]).long().to(device) for i in tokenized_test]
+    test_labels = torch.Tensor([i[1] for i in tokenized_test]).long().to(device)
+
     tokenized_train = get_tokenized_dataset(train_iter, tokenizer)
-    inputs = [torch.Tensor(i[0]).long() for i in tokenized_train]
-    labels = torch.Tensor([i[1] for i in tokenized_train]).long()
+    inputs = [torch.Tensor(i[0]).long().to(device) for i in tokenized_train]
+    labels = torch.Tensor([i[1] for i in tokenized_train]).long().to(device)
+
     if subset < 1.0:
         subset_idx = np.random.choice(
             range(len(test_inputs)), size=int(subset * len(test_inputs))
@@ -68,10 +77,14 @@ if __name__ == "__main__":
     n_steps = 0
     all_accuracies = []
     for epoch in range(args.epochs):
+
         indices = np.random.permutation(range(len(inputs)))
 
         for b in range(0, len(indices), batch_size):
-            opt.zero_grad()
+            model.train()
+            for param in model.parameters():
+                param.grad = None
+
             batch_input = [inputs[i] for i in indices[b : b + batch_size]]
             batch_lengths = (
                 torch.Tensor([i.size() for i in batch_input]).reshape(-1).long()
@@ -87,6 +100,7 @@ if __name__ == "__main__":
             n_steps += len(batch_input)
 
             if b % (10 * batch_size) == 0:
+                model.eval()
                 with torch.no_grad():
                     val_error = 0
                     val_accuracy = 0
@@ -112,3 +126,5 @@ if __name__ == "__main__":
                     val_accuracy /= len(test_inputs)
                     print(n_steps, val_accuracy)
                     all_accuracies.append((n_steps, val_accuracy))
+
+    pkl.dump(all_accuracies, open(args.output_file, "wb"))
