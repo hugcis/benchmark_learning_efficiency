@@ -82,9 +82,7 @@ if __name__ == "__main__":
     tokenized_train = get_tokenized_dataset(train_iter, tokenizer)
     inputs = [torch.Tensor(i[0]).long().to(device) for i in tokenized_train]
     labels = torch.Tensor([i[1] for i in tokenized_train]).long().to(device)
-    if not model_needs_len(args.model):
-        inputs = pad_sequence(inputs)
-        test_inputs = pad_sequence(test_inputs)
+    n_inputs = len(inputs)
 
     if subset < 1.0:
         subset_idx = np.random.choice(
@@ -95,60 +93,67 @@ if __name__ == "__main__":
 
         inputs = [inputs[i] for i in subset_idx]
         labels = labels[subset_idx]
+        n_inputs = len(inputs)
+
+    if not model_needs_len(args.model):
+        inputs = pad_sequence(inputs)
+        test_inputs = pad_sequence(test_inputs)
+        n_inputs = inputs.shape[1]
+
 
     n_steps = 0
     all_accuracies = []
     for epoch in range(args.epochs):
 
-        indices = np.random.permutation(range(len(inputs)))
+        indices = np.random.permutation(range(n_inputs))
 
         for b in range(0, len(indices), batch_size):
             model.train()
             for param in model.parameters():
                 param.grad = None
-
-            batch_input = [inputs[i] for i in indices[b : b + batch_size]]
-            batch_lengths = (
-                torch.Tensor([i.size() for i in batch_input]).reshape(-1).long()
-            )
-            padded_input = pad_sequence(batch_input)
             batch_labels = labels[indices[b : b + batch_size]]
             if model_needs_len(args.model):
+                batch_input = [inputs[i] for i in indices[b : b + batch_size]]
+                batch_lengths = (
+                    torch.Tensor([i.size() for i in batch_input]).reshape(-1).long()
+                )
+                padded_input = pad_sequence(batch_input)
                 output = model(padded_input, batch_lengths)
             else:
+                padded_input = inputs[:, indices[b : b + batch_size]]
                 output = model(padded_input)
 
             error = loss(output, batch_labels)
             error.backward()
             opt.step()
 
-            n_steps += len(batch_input)
+            n_steps += padded_input.shape[1]
 
             if b % (50 * batch_size) == 0:
                 model.eval()
                 with torch.no_grad():
                     val_error = 0
                     val_accuracy = 0
-                    for b in range(0, len(test_inputs), eval_batch_size):
-                        batch_input = test_inputs[b : b + eval_batch_size]
-                        batch_lengths = (
-                            torch.Tensor([i.size() for i in batch_input])
-                            .reshape(-1)
-                            .long()
-                        )
-                        padded_input = pad_sequence(batch_input)
-                        batch_labels = labels[b : b + eval_batch_size]
-
+                    for b in range(0, n_inputs, eval_batch_size):
+                        batch_labels = test_labels[b : b + eval_batch_size]
                         if model_needs_len(args.model):
+                            batch_input = test_inputs[b : b + eval_batch_size]
+                            batch_lengths = (
+                                torch.Tensor([i.size() for i in batch_input])
+                                .reshape(-1)
+                                .long()
+                            )
+                            padded_input = pad_sequence(batch_input)
                             output = model(padded_input, batch_lengths)
                         else:
+                            padded_input = test_inputs[:, b : b + eval_batch_size]
                             output = model(padded_input)
                         error = loss(output, batch_labels)
 
-                        val_error += error.item() * len(batch_input)
+                        val_error += error.item() * padded_input.shape[1]
                         val_accuracy += (
                             output.argmax(1) == batch_labels
-                        ).float().mean().item() * len(batch_input)
+                        ).float().mean().item() * padded_input.shape[1]
 
                     val_error /= len(test_inputs)
                     val_accuracy /= len(test_inputs)
