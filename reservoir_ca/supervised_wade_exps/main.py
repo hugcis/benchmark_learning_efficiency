@@ -73,7 +73,7 @@ if __name__ == "__main__":
     loss = CrossEntropyLoss()
     opt = optim.Adam(model.parameters())
 
-    eval_batch_size = 128
+    eval_batch_size = 32
 
     tokenized_test = get_tokenized_dataset(test_iter, tokenizer)
     test_inputs = [torch.Tensor(i[0]).long().to(device) for i in tokenized_test]
@@ -82,6 +82,9 @@ if __name__ == "__main__":
     tokenized_train = get_tokenized_dataset(train_iter, tokenizer)
     inputs = [torch.Tensor(i[0]).long().to(device) for i in tokenized_train]
     labels = torch.Tensor([i[1] for i in tokenized_train]).long().to(device)
+    if not model_needs_len(args.model):
+        inputs = pad_sequence(inputs)
+        test_inputs = pad_sequence(test_inputs)
 
     if subset < 1.0:
         subset_idx = np.random.choice(
