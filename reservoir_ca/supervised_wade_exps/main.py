@@ -9,9 +9,9 @@ from reservoir_ca.supervised_wade_exps.dataset import (
     get_tokenizer,
     get_train_test_sets,
 )
-from reservoir_ca.supervised_wade_exps.model import Recurrent
+from reservoir_ca.supervised_wade_exps.model import Recurrent, TransformerModel
 from torch import optim
-from torch.nn.modules.loss import BCELoss, CrossEntropyLoss
+from torch.nn.modules.loss import CrossEntropyLoss
 from torch.nn.modules.transformer import Transformer
 from torch.nn.utils.rnn import pad_sequence
 
@@ -22,11 +22,20 @@ parser.add_argument("--batch-size", type=int, default=8)
 parser.add_argument("--epochs", type=int, default=10)
 parser.add_argument("--embed-size", type=int, default=128)
 parser.add_argument("--hidden-size", type=int, default=256)
+parser.add_argument("--n-layers", type=int, default=1)
 parser.add_argument("--subset", type=float, default=1.0)
 parser.add_argument(
     "--model", type=str, default="RNN", choices=["RNN", "LSTM", "GRU", "Transformer"]
 )
 parser.add_argument("--output-file", type=str, default="output.pkl")
+
+
+def model_needs_len(model: str) -> bool:
+    if model in ["RNN", "LSTM", "GRU"]:
+        return True
+    else:
+        return False
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -46,9 +55,19 @@ if __name__ == "__main__":
             num_output=2,
             rnn_model="LSTM",
             hidden_size=args.hidden_size,
+            num_layers=args.n_layers,
+        )
+    elif args.model == "Transformer":
+        model = TransformerModel(
+            tokenizer.get_vocab_size(),
+            args.embed_size,
+            8,
+            args.hidden_size,
+            args.n_layers,
+            2,
         )
     else:
-        model = Transformer()
+        raise ValueError("Unknown model type")
 
     model.to(device)
     loss = CrossEntropyLoss()
@@ -91,15 +110,18 @@ if __name__ == "__main__":
             )
             padded_input = pad_sequence(batch_input)
             batch_labels = labels[indices[b : b + batch_size]]
+            if model_needs_len(args.model):
+                output = model(padded_input, batch_lengths)
+            else:
+                output = model(padded_input)
 
-            output = model(padded_input, batch_lengths)
             error = loss(output, batch_labels)
             error.backward()
             opt.step()
 
             n_steps += len(batch_input)
 
-            if b % (10 * batch_size) == 0:
+            if b % (50 * batch_size) == 0:
                 model.eval()
                 with torch.no_grad():
                     val_error = 0
@@ -114,7 +136,10 @@ if __name__ == "__main__":
                         padded_input = pad_sequence(batch_input)
                         batch_labels = labels[b : b + eval_batch_size]
 
-                        output = model(padded_input, batch_lengths)
+                        if model_needs_len(args.model):
+                            output = model(padded_input, batch_lengths)
+                        else:
+                            output = model(padded_input)
                         error = loss(output, batch_labels)
 
                         val_error += error.item() * len(batch_input)
