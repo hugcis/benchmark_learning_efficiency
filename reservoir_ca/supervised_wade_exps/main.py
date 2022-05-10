@@ -152,9 +152,9 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     val_error = 0
                     val_accuracy = 0
-                    for _ in range(0, n_inputs, eval_batch_size):
-                        batch_labels = test_labels[b : b + eval_batch_size]
-                        batch_input = test_inputs[b : b + eval_batch_size]
+                    for s in range(0, n_inputs, eval_batch_size):
+                        batch_labels = test_labels[s : s + eval_batch_size]
+                        batch_input = test_inputs[s : s + eval_batch_size]
                         batch_lengths = (
                             torch.Tensor([i.size() for i in batch_input])
                             .reshape(-1)
