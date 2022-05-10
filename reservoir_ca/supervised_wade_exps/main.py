@@ -95,11 +95,18 @@ if __name__ == "__main__":
         labels = labels[subset_idx]
         n_inputs = len(inputs)
 
-    if not model_needs_len(args.model):
-        inputs = pad_sequence(inputs)
-        test_inputs = pad_sequence(test_inputs)
-        n_inputs = inputs.shape[1]
+    if not model_needs_len(args.model) and torch.cuda.is_available():
+        rand_batch = torch.randint(
+            0, 2, size=(max(i.shape[0] for i in inputs), batch_size), device=device
+        ).long()
+        rand_labels = torch.randint(0, 2, size=batch_size, device=device).long()
 
+        output = model(rand_batch)
+        error = loss(output, rand_labels)
+        error.backward()
+    #     inputs = pad_sequence(inputs)
+    #     test_inputs = pad_sequence(test_inputs)
+    #     n_inputs = inputs.shape[1]
 
     n_steps = 0
     all_accuracies = []
@@ -112,16 +119,18 @@ if __name__ == "__main__":
             for param in model.parameters():
                 param.grad = None
             batch_labels = labels[indices[b : b + batch_size]]
+            # if model_needs_len(args.model):
+
+            batch_input = [inputs[i] for i in indices[b : b + batch_size]]
+            batch_lengths = (
+                torch.Tensor([i.size() for i in batch_input]).reshape(-1).long()
+            )
+            padded_input = pad_sequence(batch_input)
             if model_needs_len(args.model):
-                batch_input = [inputs[i] for i in indices[b : b + batch_size]]
-                batch_lengths = (
-                    torch.Tensor([i.size() for i in batch_input]).reshape(-1).long()
-                )
-                padded_input = pad_sequence(batch_input)
                 output = model(padded_input, batch_lengths)
             else:
-                padded_input = inputs[:, indices[b : b + batch_size]]
                 output = model(padded_input)
+            #     padded_input = inputs[:, indices[b : b + batch_size]]
 
             error = loss(output, batch_labels)
             error.backward()
@@ -134,19 +143,18 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     val_error = 0
                     val_accuracy = 0
-                    for b in range(0, n_inputs, eval_batch_size):
+                    for _ in range(0, n_inputs, eval_batch_size):
                         batch_labels = test_labels[b : b + eval_batch_size]
+                        batch_input = test_inputs[b : b + eval_batch_size]
+                        batch_lengths = (
+                            torch.Tensor([i.size() for i in batch_input])
+                            .reshape(-1)
+                            .long()
+                        )
+                        padded_input = pad_sequence(batch_input)
                         if model_needs_len(args.model):
-                            batch_input = test_inputs[b : b + eval_batch_size]
-                            batch_lengths = (
-                                torch.Tensor([i.size() for i in batch_input])
-                                .reshape(-1)
-                                .long()
-                            )
-                            padded_input = pad_sequence(batch_input)
                             output = model(padded_input, batch_lengths)
                         else:
-                            padded_input = test_inputs[:, b : b + eval_batch_size]
                             output = model(padded_input)
                         error = loss(output, batch_labels)
 
