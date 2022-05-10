@@ -53,7 +53,7 @@ if __name__ == "__main__":
             tokenizer.get_vocab_size(),
             embed_size=args.embed_size,
             num_output=2,
-            rnn_model="LSTM",
+            rnn_model=args.model,
             hidden_size=args.hidden_size,
             num_layers=args.n_layers,
         )
@@ -69,6 +69,7 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown model type")
 
+    print("Parameters", sum(p.reshape(-1).size()[0] for p in model.parameters()))
     model.to(device)
     loss = CrossEntropyLoss()
     opt = optim.Adam(model.parameters())
