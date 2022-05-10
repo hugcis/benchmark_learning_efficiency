@@ -104,6 +104,14 @@ if __name__ == "__main__":
         output = model(rand_batch)
         error = loss(output, rand_labels)
         error.backward()
+        rand_batch = torch.randint(
+            0,
+            2,
+            size=(max(i.shape[0] for i in test_inputs), eval_batch_size),
+            device=device,
+        ).long()
+        output = model(rand_batch)
+
     #     inputs = pad_sequence(inputs)
     #     test_inputs = pad_sequence(test_inputs)
     #     n_inputs = inputs.shape[1]
