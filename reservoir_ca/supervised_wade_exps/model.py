@@ -136,6 +136,7 @@ class TransformerModel(nn.Module):
         nlayers: int,
         noutput: int,
         dropout: float = 0.5,
+        add_dropout: bool = False,
     ):
         super(TransformerModel, self).__init__()
         try:
@@ -151,6 +152,10 @@ class TransformerModel(nn.Module):
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.encoder = nn.Embedding(ntoken, ninp)
         self.ninp = ninp
+        self.add_dropout = add_dropout
+        if self.add_dropout:
+            self.drop_en = nn.Dropout(p=0.6)
+            self.bn2 = nn.BatchNorm1d(ninp)
         self.decoder = nn.Linear(ninp, noutput)
         self.init_weights()
 
@@ -178,8 +183,13 @@ class TransformerModel(nn.Module):
         else:
             self.src_mask = None
 
-        src = self.encoder(src) * math.sqrt(self.ninp)
+        emb = self.encoder(src)
+        if self.add_dropout:
+            emb = self.drop_en(emb)
+        src = emb * math.sqrt(self.ninp)
         src = self.pos_encoder(src)
         output = self.transformer_encoder(src, self.src_mask).mean(dim=0)
+        if self.add_dropout:
+            output = self.bn2(output)
         output = self.decoder(output)
         return output

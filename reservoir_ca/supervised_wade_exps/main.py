@@ -24,17 +24,15 @@ parser.add_argument("--embed-size", type=int, default=128)
 parser.add_argument("--hidden-size", type=int, default=256)
 parser.add_argument("--n-layers", type=int, default=1)
 parser.add_argument("--subset", type=float, default=1.0)
+parser.add_argument("--dropout-transformer", default=False, action="store_true")
 parser.add_argument(
     "--model", type=str, default="RNN", choices=["RNN", "LSTM", "GRU", "Transformer"]
 )
 parser.add_argument("--output-file", type=str, default="output.pkl")
 
 
-def model_needs_len(model: str) -> bool:
-    if model in ["RNN", "LSTM", "GRU"]:
-        return True
-    else:
-        return False
+def model_needs_len(mdel: str) -> bool:
+    return mdel in ["RNN", "LSTM", "GRU"]
 
 
 if __name__ == "__main__":
@@ -65,6 +63,7 @@ if __name__ == "__main__":
             args.hidden_size,
             args.n_layers,
             2,
+            add_dropout=args.dropout_transformer,
         )
     else:
         raise ValueError("Unknown model type")
@@ -150,8 +149,8 @@ if __name__ == "__main__":
             if b % (50 * batch_size) == 0:
                 model.eval()
                 with torch.no_grad():
-                    val_error = 0.
-                    val_accuracy = 0.
+                    val_error = 0.0
+                    val_accuracy = 0.0
                     for s in range(0, n_inputs, eval_batch_size):
                         batch_labels = test_labels[s : s + eval_batch_size]
                         batch_input = test_inputs[s : s + eval_batch_size]
