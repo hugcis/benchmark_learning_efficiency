@@ -1,3 +1,4 @@
+"""Some experimetns with the IMDB dataset and standard supervised models."""
 import argparse
 import itertools
 import pickle as pkl
@@ -12,7 +13,6 @@ from reservoir_ca.supervised_wade_exps.dataset import (
 from reservoir_ca.supervised_wade_exps.model import Recurrent, TransformerModel
 from torch import optim
 from torch.nn.modules.loss import CrossEntropyLoss
-from torch.nn.modules.transformer import Transformer
 from torch.nn.utils.rnn import pad_sequence
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -150,8 +150,8 @@ if __name__ == "__main__":
             if b % (50 * batch_size) == 0:
                 model.eval()
                 with torch.no_grad():
-                    val_error = 0
-                    val_accuracy = 0
+                    val_error = 0.
+                    val_accuracy = 0.
                     for s in range(0, n_inputs, eval_batch_size):
                         batch_labels = test_labels[s : s + eval_batch_size]
                         batch_input = test_inputs[s : s + eval_batch_size]
@@ -177,4 +177,5 @@ if __name__ == "__main__":
                     print("Steps:", n_steps, "Accuracy:", val_accuracy)
                     all_accuracies.append((n_steps, val_accuracy))
 
-    pkl.dump((all_accuracies, vars(args)), open(args.output_file, "wb"))
+    with open(args.output_file, "wb") as f:
+        pkl.dump((all_accuracies, vars(args)), f)
