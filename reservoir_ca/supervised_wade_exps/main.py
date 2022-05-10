@@ -99,7 +99,7 @@ if __name__ == "__main__":
         rand_batch = torch.randint(
             0, 2, size=(max(i.shape[0] for i in inputs), batch_size), device=device
         ).long()
-        rand_labels = torch.randint(0, 2, size=batch_size, device=device).long()
+        rand_labels = torch.randint(0, 2, size=(batch_size,), device=device).long()
 
         output = model(rand_batch)
         error = loss(output, rand_labels)
