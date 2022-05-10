@@ -152,7 +152,6 @@ class TransformerModel(nn.Module):
         self.encoder = nn.Embedding(ntoken, ninp)
         self.ninp = ninp
         self.decoder = nn.Linear(ninp, noutput)
-
         self.init_weights()
 
     def _generate_square_subsequent_mask(self, sz):
@@ -181,6 +180,6 @@ class TransformerModel(nn.Module):
 
         src = self.encoder(src) * math.sqrt(self.ninp)
         src = self.pos_encoder(src)
-        output = self.transformer_encoder(src, self.src_mask)[-1, :, :]
+        output = self.transformer_encoder(src, self.src_mask).mean(dim=0)
         output = self.decoder(output)
         return output
