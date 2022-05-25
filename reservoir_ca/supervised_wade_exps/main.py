@@ -123,7 +123,11 @@ if __name__ == "__main__":
         labels = labels[subset_idx]
         n_inputs = len(inputs)
 
-    if not model_needs_len(args.model) and torch.cuda.is_available():
+    if (
+        not model_needs_len(args.model)
+        and torch.cuda.is_available()
+        and not args.model == "Linear"
+    ):
         rand_batch = torch.randint(
             0, 2, size=(max(i.shape[0] for i in inputs), batch_size), device=device
         ).long()
