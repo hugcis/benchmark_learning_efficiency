@@ -29,6 +29,7 @@ parser.add_argument("--embed-size", type=int, default=128)
 parser.add_argument("--hidden-size", type=int, default=256)
 parser.add_argument("--n-layers", type=int, default=1)
 parser.add_argument("--subset", type=float, default=1.0)
+parser.add_argument("--weight-decay", type=float, default=0.0)
 parser.add_argument("--dropout-transformer", default=False, action="store_true")
 parser.add_argument(
     "--model",
@@ -91,7 +92,7 @@ if __name__ == "__main__":
     print("Parameters", sum(p.reshape(-1).size()[0] for p in model.parameters()))
     model.to(device)
     loss = CrossEntropyLoss()
-    opt = optim.Adam(model.parameters())
+    opt = optim.Adam(model.parameters(), weight_decay=args.weight_decay)
 
     eval_batch_size = 32
 
