@@ -79,6 +79,28 @@ class Recurrent(nn.Module):
         return out
 
 
+class LinearReg(nn.Module):
+    def __init__(
+        self,
+        vocab_size,
+        num_output,
+    ):
+
+        super().__init__()
+        self.fc = nn.Linear(vocab_size, num_output)
+
+    def forward(self, x) -> torch.Tensor:
+        """
+        Args:
+            x: (batch, input_size)
+        Returns:
+            out: (batch, output_size)
+        """
+
+        out = self.fc(x)
+        return out
+
+
 class PositionalEncoding(nn.Module):
     """Inject some information about the relative or absolute position of the
         tokens in the sequence. The positional encodings have the same dimension
