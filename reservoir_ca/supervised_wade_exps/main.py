@@ -109,9 +109,13 @@ if __name__ == "__main__":
         inputs = convert_to_bow(inputs, tokenizer.get_vocab_size())
         test_inputs = convert_to_bow(test_inputs, tokenizer.get_vocab_size())
 
-    # Convert all inputs to tensors
-    inputs = [torch.Tensor(i).to(device) for i in inputs]
-    test_inputs = [torch.Tensor(i).to(device) for i in test_inputs]
+        # Convert all inputs to tensors
+        inputs = [torch.Tensor(i).to(device) for i in inputs]
+        test_inputs = [torch.Tensor(i).to(device) for i in test_inputs]
+    else:
+        # Convert all inputs to tensors
+        inputs = [torch.Tensor(i).long().to(device) for i in inputs]
+        test_inputs = [torch.Tensor(i).long().to(device) for i in test_inputs]
 
     if subset < 1.0:
         subset_idx = np.random.choice(
