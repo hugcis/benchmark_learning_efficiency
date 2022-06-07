@@ -79,6 +79,7 @@ class Recurrent(nn.Module):
         return out
 
 
+
 class LinearReg(nn.Module):
     def __init__(
         self,
@@ -196,7 +197,11 @@ class TransformerModel(nn.Module):
         nn.init.zeros_(self.decoder.bias)
         nn.init.uniform_(self.decoder.weight, -initrange, initrange)
 
-    def forward(self, src, has_mask=False):
+    def forward(self, src, has_mask=False, take_mean=True):
+        """ Apply the transformer.
+        Args:
+            src: Tensor of long, shape [padded_length, batch_size]
+        """
         if has_mask:
             device = src.device
             if self.src_mask is None or self.src_mask.size(0) != len(src):
@@ -210,7 +215,9 @@ class TransformerModel(nn.Module):
             emb = self.drop_en(emb)
         src = emb * math.sqrt(self.ninp)
         src = self.pos_encoder(src)
-        output = self.transformer_encoder(src, self.src_mask).mean(dim=0)
+        output = self.transformer_encoder(src, self.src_mask)
+        if take_mean:
+            output = output.mean(dim=0)
         if self.add_dropout:
             output = self.bn2(output)
         output = self.decoder(output)

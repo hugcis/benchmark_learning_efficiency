@@ -51,6 +51,12 @@ class RNN:
     def state_size(self):
         return self.hidden_size
 
+    def n_parameters(self) -> int:
+        return sum(
+            i.reshape(-1).size()[0]
+            for i in chain(self.linear.parameters(), self.rnn.parameters())
+        )
+
     def apply(self, inp: np.ndarray, mask: List[List[int]]) -> torch.Tensor:
         """Apply the RNN.
 
@@ -92,7 +98,13 @@ class RNN:
     def step(
         self, inp: np.ndarray, targets: np.ndarray, mask: List[List[int]]
     ) -> Optional[float]:
-
+        """
+        Args:
+            inp: array of shape [seq_len, b_size (=1), n_tokens]
+            targets: array of shape [seq_len]
+            mask: list of mask for each sequence. the length of the list is equal
+                to batch size.
+        """
         self.rnn.train()
         msk_out = self.apply(inp, mask)
         if mask is not None:

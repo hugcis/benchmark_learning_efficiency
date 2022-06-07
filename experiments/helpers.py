@@ -28,10 +28,12 @@ from reservoir_ca.standard_recurrent import RNN, NetType
 from reservoir_ca.tasks import Task
 from tqdm import tqdm
 
+from reservoir_ca.transformer_experiment import Transformer, TransformerExperiment
+
 from .result import Result, ResultType
 
-AnyExp = Union[Experiment, RNNExperiment]
-Res = Union[Reservoir, RNN]
+AnyExp = Union[Experiment, RNNExperiment, TransformerExperiment]
+Res = Union[Reservoir, RNN, Transformer]
 
 
 class ReservoirMaker(Protocol):
@@ -139,6 +141,7 @@ def make_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--rnn_baseline", action="store_true", default=False)
     parser.add_argument("--lstm_baseline", action="store_true", default=False)
+    parser.add_argument("--transformer_baseline", action="store_true", default=False)
     parser.add_argument(
         "--debug", action="store_true", default=False, help="Print debug information"
     )
@@ -312,6 +315,15 @@ def get_res_fn(
             return make_lstm(exp, opts, **kwargs)
 
         rules = [-3]
+    elif args.transformer_baseline:
+        logging.info("Experiment with the supervised LSTM baseline")
+
+        def res_fn(t: int, exp: AnyExp, opts: ExpOptions, **kwargs) -> Res:
+            del t
+            assert isinstance(exp, TransformerExperiment)
+            return make_transformer(exp, opts, **kwargs)
+
+        rules = [-4]
 
     elif opts.ca_rule_type == CARuleType.STANDARD:
 
@@ -381,6 +393,7 @@ def make_rnn(exp: RNNExperiment, opts: ExpOptions, **kwargs) -> RNN:
         hidden_size=hidden_size,
         out_size=exp.output_dim,
     )
+    logging.info("N Parameters %d", rnn.n_parameters())
     return rnn
 
 
@@ -396,7 +409,27 @@ def make_lstm(exp: RNNExperiment, opts: ExpOptions, **kwargs) -> RNN:
         out_size=exp.output_dim,
         net_type=NetType.LSTM,
     )
+    logging.info("N Parameters %d", rnn.n_parameters())
     return rnn
+
+
+def make_transformer(
+    exp: TransformerExperiment, opts: ExpOptions, **kwargs
+) -> Transformer:
+    mult: int = kwargs.get("mult", 1)
+    hidden_size = get_eq_hidden_size(
+        exp.output_dim, opts.redundancy, opts.proj_factor, opts.r_height, mult=mult
+    )
+    logging.info("Equivalent Transformer has hidden size %d", hidden_size)
+    transformer = Transformer(
+        n_tokens=exp.output_dim,
+        n_inp=80,
+        n_head=8,
+        n_hidden=50,
+        n_output=exp.output_dim,
+    )
+    logging.info("N Parameters %d", transformer.n_parameters())
+    return transformer
 
 
 def run_task(
@@ -422,7 +455,7 @@ def run_task(
         task_fname, opts_extra, rules=rules
     )
     logging.info("Saving output params in %s", save_path)
-    if rules and rules != [-2] and rules != [-3]:
+    if rules and rules != [-2] and rules != [-3] and rules != [-4]:
         for it in tqdm(range(opts.n_rep), miniters=10):
             exp = Experiment(task, opts)
             for t in rules:
@@ -471,6 +504,22 @@ def run_task(
                 res.update_extra("tta", -3 * mult, partial_test_results)
 
             res.save()
+
+    elif rules == [-4]:
+        for mult in [1, 10]:
+            for _ in tqdm(range(opts.n_rep), miniters=10):
+                trans_exp = TransformerExperiment(task, opts)
+                transformer = res_fn(0, trans_exp, opts, mult=mult)
+                assert isinstance(transformer, Transformer)
+                trans_exp.set_model(transformer)
+                partial_test_results = trans_exp.fit_with_eval()
+
+                # Save the results with index rule -2, -20, -200
+                res.update(-4 * mult, partial_test_results[-1])
+                res.update_extra("tta", -4 * mult, partial_test_results)
+
+            res.save()
+
     return {}, None
 
 
