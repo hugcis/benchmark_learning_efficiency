@@ -1,4 +1,5 @@
 import math
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -79,7 +80,6 @@ class Recurrent(nn.Module):
         return out
 
 
-
 class LinearReg(nn.Module):
     def __init__(
         self,
@@ -89,6 +89,9 @@ class LinearReg(nn.Module):
 
         super().__init__()
         self.fc = nn.Linear(vocab_size, num_output)
+        k = np.sqrt(1 / vocab_size)
+        nn.init.uniform_(self.fc.weight, a=-k / 10, b=k / 10)
+        nn.init.uniform_(self.fc.bias, a=-k / 10, b=k / 10)
 
     def forward(self, x) -> torch.Tensor:
         """
@@ -198,7 +201,7 @@ class TransformerModel(nn.Module):
         nn.init.uniform_(self.decoder.weight, -initrange, initrange)
 
     def forward(self, src, has_mask=False, take_mean=True):
-        """ Apply the transformer.
+        """Apply the transformer.
         Args:
             src: Tensor of long, shape [padded_length, batch_size]
         """
