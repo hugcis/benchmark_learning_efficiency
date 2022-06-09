@@ -47,7 +47,7 @@ def model_needs_len(mdel: str) -> bool:
 def convert_to_bow(inputs: List[List[int]], voc_size: int) -> List[torch.Tensor]:
     converted = []
     for inp in inputs:
-        arr = np.zeros(voc_size)
+        arr = torch.zeros(voc_size)
         for i in inp:
             arr[i] = 1
         arr /= arr.sum()

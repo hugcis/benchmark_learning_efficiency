@@ -90,8 +90,9 @@ class LinearReg(nn.Module):
         super().__init__()
         self.fc = nn.Linear(vocab_size, num_output)
         k = np.sqrt(1 / vocab_size)
-        nn.init.uniform_(self.fc.weight, a=-k / 10, b=k / 10)
-        nn.init.uniform_(self.fc.bias, a=-k / 10, b=k / 10)
+        damp = 100.
+        nn.init.uniform_(self.fc.weight, a=-k / damp, b=k / damp)
+        nn.init.uniform_(self.fc.bias, a=-k / damp, b=k / damp)
 
     def forward(self, x) -> torch.Tensor:
         """
