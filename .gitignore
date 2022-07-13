@@ -2,3 +2,6 @@ experiment_results/*.pkl
 experiment_results/*.json
 notebooks
 /experiment_results
+/.data/
+/experiment_gpu/
+/experiment_sgd/

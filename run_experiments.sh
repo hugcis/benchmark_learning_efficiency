@@ -18,7 +18,7 @@ for i in $(seq 50); do
 done
 
 
-# Run benchmark experiments
+# Run benchmark experiments (if a GPU is available it will be used automatically)
 # CA experiments
 mkdir -p experiment_sgd
 for i in $(seq 256); do
