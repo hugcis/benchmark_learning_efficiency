@@ -1,8 +1,13 @@
 [tool.poetry]
 name = "reservoir_ca"
 version = "0.1.0"
-description = ""
+description = "Code to reproduce results of the paper Benchmarking Learning Efficiency in Deep Reservoir Computing"
 authors = ["hugcis <hmj.cisneros@gmail.com>"]
+keywords = ["research-paper", "another_keyword"]
+readme = "README.md"
+license = "MIT"
+homepage = "https://github.com/MattiooFR/package_name"
+repository = "https://github.com/MattiooFR/package_name"
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.11"
@@ -11,18 +16,16 @@ matplotlib = "^3.4.3"
 tqdm = "^4.62.3"
 sklearn = "^0.0"
 torch = "^1.10.0"
-incremental_tasks = {path = "../incremental_tasks", develop = true}
 torchtext = "^0.12.0"
 torchdata = "^0.3.0"
 tokenizers = "^0.12.1"
-jupyterlab-code-formatter = "^1.4.11"
+incremental-tasks = "0.1.2"
 
 [tool.poetry.group.dev.dependencies]
 seaborn = "^0.11.2"
 matplotlib = "^3.4.3"
 jupyter = "^1.0.0"
 jupyterlab = "^3.2.2"
-dvc = "^2.9.2"
 joblib = "^1.1.0"
 isort = "^5.10.1"
 black = "^22.3.0"
