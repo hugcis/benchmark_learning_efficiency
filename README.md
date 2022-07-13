@@ -1,8 +1,10 @@
 # Benchmarking learning efficiency in deep reservoir computing
 
-This is the code to reproduce results from the paper *Cisneros, H., Mikolov, T.,
-& Sivic, J. (2022). Benchmarking Learning Efficiency in Deep Reservoir
-Computing. 1st Conference on Lifelong Learning Agents, Montreal, Canada*.
+This is the code to reproduce results from the paper 
+
+*Benchmarking Learning Efficiency in Deep Reservoir Computing. Cisneros, H.,
+Mikolov, T., & Sivic, J. (2022). 1st Conference on Lifelong Learning Agents,
+Montreal, Canada*.
 
 ## Re-run experiments
 
@@ -35,17 +37,21 @@ Then run:
 ./run_experiments.sh
 ```
 
-Finally
-
 ### Running in Docker
 
 If you don't have or don't want to install poetry, you can build and install
-everything within a docker container. Just run inside the repo:
+everything within a docker container. Just run the following from inside the
+repo:
 
 ``` sh
-docker build .
+docker build -t pypoetry_bledrc .
+docker run -it --entrypoint=/bin/bash pypoetry_bledrc -i
 ```
 
+This will open a bash tty within the docker container where you can run 
+```sh
+./run_experiments.sh
+```
 
 ## Generate figures and tables
 
@@ -57,3 +63,4 @@ Just run
 ``` sh
 poetry run jupyter notebook
 ```
+and open the two jupyter notebooks in the folder `notebooks`.
